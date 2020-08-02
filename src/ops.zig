@@ -3,7 +3,7 @@ const warn = std.debug.warn;
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 
-pub const OpTag = enum {
+pub const OpTag = enum(u2) {
   Put,
   Del
 };
@@ -15,21 +15,14 @@ pub const Op = struct {
 };
 
 pub fn applyTo(tree: ?*Tree, batch: []Op) *Tree {
-  if (tree) |t| {
-    return apply(t, batch);
-  } else {
-    var t = build(batch);
-    return t;
-  }
+  if (tree) |t| return apply(t, batch);
+  return build(batch);
 }
 
 pub fn build(batch: []Op) *Tree {
   var mid_index: usize = batch.len / 2;
-  if (batch[mid_index].op == OpTag.Del) {
-    // TODO: return error
-    @panic("tried to delete non-existent key");
-  }
-
+  // TODO: return error
+  if (batch[mid_index].op == OpTag.Del) @panic("tried to delete non-existent key");
   var mid_tree = Tree.init(batch[mid_index].key, batch[mid_index].val);
   return recurse(mid_tree, batch, mid_index, true);
 }
@@ -42,6 +35,8 @@ pub fn apply(tree: *Tree, batch: []Op) *Tree {
   if (found) {
     if (batch[mid].op == OpTag.Put) {
       tree.updateVal(batch[mid].val);
+    } else if (batch[mid].op == OpTag.Del) {
+      // TODO: delete
     }
   }
 
@@ -50,12 +45,7 @@ pub fn apply(tree: *Tree, batch: []Op) *Tree {
 
 pub fn recurse(tree: *Tree, batch: []Op, mid: usize, exclusive: bool) *Tree {
   var left_batch = batch[0..mid];
-  var right_batch: []Op = undefined;
-  if (exclusive) {
-    right_batch = batch[mid + 1..];
-  } else {
-    right_batch = batch[mid..];
-  }
+  var right_batch = if (exclusive) batch[mid + 1..] else batch[mid..];
 
   if (left_batch.len != 0) {
     var detached = tree.detach(true);
@@ -74,9 +64,7 @@ pub fn recurse(tree: *Tree, batch: []Op, mid: usize, exclusive: bool) *Tree {
 
 pub fn balance(tree: *Tree) *Tree {
   var factor = balanceFactor(tree);
-  if (-1 <= factor and factor <= 1) {
-    return tree;
-  }
+  if (-1 <= factor and factor <= 1) return tree;
 
   var is_left = factor < 0;
   var child_left = balanceFactor(tree.child(is_left)) > 0;
@@ -92,20 +80,15 @@ pub fn balance(tree: *Tree) *Tree {
 }
 
 pub fn balanceFactor(tree: ?*Tree) i16 {
-  if (tree) |t| {
-    return t.balanceFactor();
-  } else {
-    return 0;
-  }
+  if (tree) |t| return t.balanceFactor();
+  return 0;
 }
 
 pub fn rotate(tree: *Tree, is_left: bool) *Tree {
   // Note: expected to have child
   var child = tree.detach(is_left).?;
 
-  if (child.detach(!is_left)) |grand_child| {
-    tree.attach(is_left, grand_child);
-  }
+  if (child.detach(!is_left)) |grand_child| tree.attach(is_left, grand_child);
 
   var balanced = balance(tree);
   child.attach(!is_left, balanced);
@@ -126,9 +109,7 @@ pub fn binaryBatchSearch(needle: []const u8, batch: []Op, found: *bool, index: *
     } else if (std.mem.lessThan(u8, batch[median].key, needle)) {
       low = median + 1;
     } else {
-      if (median == 0) {
-        break;
-      }
+      if (median == 0) break;
       high = median - 1;
     }
   }

@@ -6,7 +6,7 @@ const KV = @import("kv.zig").KV;
 const h = @import("hash.zig");
 const Hash = h.Hash;
 
-pub const LinkTag = enum {
+pub const LinkTag = enum(u2) {
     Pruned,
     Modified,
     Stored,
@@ -19,49 +19,49 @@ pub const Link = union(LinkTag) {
 
   pub fn key(self: Link) []const u8 {
     return switch(self) {
-      LinkTag.Pruned => undefined,
-      LinkTag.Modified => self.Modified.tree.key(),
-      LinkTag.Stored => self.Stored.tree.key(),
+      .Pruned => undefined,
+      .Modified => self.Modified.tree.key(),
+      .Stored => self.Stored.tree.key(),
     };
   }
 
   pub fn tree(self: Link) ?*Tree {
     return switch(self) {
-      LinkTag.Pruned => null,
-      LinkTag.Modified => self.Modified.tree,
-      LinkTag.Stored => self.Stored.tree,
+      .Pruned => null,
+      .Modified => self.Modified.tree,
+      .Stored => self.Stored.tree,
     };
   }
 
   pub fn hash(self: Link) ?Hash {
     return switch(self) {
-      LinkTag.Pruned => self.Pruned.hash,
-      LinkTag.Modified => null,
-      LinkTag.Stored => self.Stored.hash,
+      .Pruned => self.Pruned.hash,
+      .Modified => null,
+      .Stored => self.Stored.hash,
     };
   }
 
   pub fn height(self: Link) u8 {
     return switch(self) {
-      LinkTag.Pruned => 1 + std.mem.max(u8, self.Pruned.child_heights[0..]),
-      LinkTag.Modified => 1 + std.mem.max(u8, self.Modified.child_heights[0..]),
-      LinkTag.Stored => 1 + std.mem.max(u8, self.Stored.child_heights[0..]),
+      .Pruned => 1 + std.mem.max(u8, self.Pruned.child_heights[0..]),
+      .Modified => 1 + std.mem.max(u8, self.Modified.child_heights[0..]),
+      .Stored => 1 + std.mem.max(u8, self.Stored.child_heights[0..]),
     };
   }
 
   pub fn childHeights(self: Link) [2]u8 {
     return switch(self) {
-      LinkTag.Pruned => self.Pruned.child_heights,
-      LinkTag.Modified => self.Modified.child_heights,
-      LinkTag.Stored => self.Stored.child_heights,
+      .Pruned => self.Pruned.child_heights,
+      .Modified => self.Modified.child_heights,
+      .Stored => self.Stored.child_heights,
     };
   }
 
   pub fn balanceFactor(self: Link) i16 {
     return switch(self) {
-      LinkTag.Pruned => @as(i16, self.Pruned.child_heights[1]) - @as(i16, self.Pruned.child_heights[0]),
-      LinkTag.Modified => @as(i16, self.Modified.child_heights[1]) - @as(i16, self.Modified.child_heights[0]),
-      LinkTag.Stored => @as(i16, self.Stored.child_heights[1]) - @as(i16, self.Stored.child_heights[0]),
+      .Pruned => @as(i16, self.Pruned.child_heights[1]) - @as(i16, self.Pruned.child_heights[0]),
+      .Modified => @as(i16, self.Modified.child_heights[1]) - @as(i16, self.Modified.child_heights[0]),
+      .Stored => @as(i16, self.Stored.child_heights[1]) - @as(i16, self.Stored.child_heights[0]),
     };
   }
 
@@ -77,25 +77,25 @@ pub const Link = union(LinkTag) {
 
   pub fn intoStored(self: Link, t: *Tree) Link {
     return switch(self) {
-      LinkTag.Pruned => Link{ .Stored = Stored{
+      .Pruned => Link{ .Stored = Stored{
         .hash = self.hash().?,
         .tree = t,
         .child_heights = t.childHeights()
       }},
-      LinkTag.Modified => Link{ .Stored = Stored{
+      .Modified => Link{ .Stored = Stored{
         .hash = self.tree().?.hash(),
         .tree = self.tree().?,
         .child_heights = self.childHeights(),
       }},
-      LinkTag.Stored => @panic("should be modified link"),
+      .Stored => @panic("should be modified link"),
     };
   }
 
   pub fn intoPruned(self: Link) Link {
     return switch(self) {
-      LinkTag.Pruned => @panic("should be stored link"),
-      LinkTag.Modified => @panic("should be stored link"),
-      LinkTag.Stored => Link{ .Pruned = Pruned{ .hash = self.hash().?, .child_heights = self.childHeights() }},
+      .Pruned => @panic("should be stored link"),
+      .Modified => @panic("should be stored link"),
+      .Stored => Link{ .Pruned = Pruned{ .hash = self.hash().?, .child_heights = self.childHeights() }},
     };
   }
 };
@@ -104,10 +104,6 @@ pub const Pruned = struct {
   hash: Hash,
   child_heights: [2]u8, // [left, right]
   // key: []const u8,
-
-  pub fn init(key: []const u8) Pruned {
-    return Pruned{ .hash = undefined, .child_heights = .{0, 0}, .key = key };
-  }
 };
 
 pub const Modified = struct {
@@ -119,10 +115,6 @@ pub const Stored = struct {
   hash: Hash,
   child_heights: [2]u8, // [left, right]
   tree: *Tree,
-
-  pub fn init(key: []const u8) Stored {
-    return Stored{ .key = key };
-  }
 };
 
 test "key" {

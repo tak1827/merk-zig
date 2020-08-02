@@ -30,94 +30,56 @@ pub const Tree = struct {
     return tree;
   }
 
-  pub fn key(self: Tree) []const u8 {
-    return self.kv.key;
+  pub fn key(self: Tree) []const u8 { return self.kv.key; }
+
+  pub fn value(self: Tree) []const u8 { return self.kv.val; }
+
+  pub fn updateVal(self: *Tree, val: []const u8) void { self.kv.hash = h.kvHash(self.kv.key, self.kv.val); }
+
+  pub fn hash(self: Tree) Hash { return h.nodeHash(self.kvHash(), self.childHash(true), self.childHash(false)); }
+
+  pub fn childHash(self: Tree, is_left: bool) Hash {
+    if (self.link(is_left)) |l| return l.hash().?;
+    return h.ZeroHash;
   }
 
-  pub fn value(self: Tree) []const u8 {
-    return self.kv.val;
-  }
+  pub fn kvHash(self: Tree) Hash { return self.kv.hash; }
 
-  pub fn kvHash(self: Tree) Hash {
-    return self.kv.hash;
-  }
+  pub fn height(self: Tree) u8 { return 1 + std.mem.max(u8, self.childHeights()[0..]); }
 
-  pub fn link(self: Tree, is_left: bool) ?Link {
-    if (is_left) {
-      return self.left;
-    } else {
-      return self.right;
-    }
+  pub fn childHeights(self: Tree) [2]u8 { return [2]u8{ self.childHeight(true), self.childHeight(false) }; }
+
+  pub fn childHeight(self: Tree, is_left: bool) u8 {
+    if(self.link(is_left)) |l| return l.height();
+    return 0;
   }
 
   pub fn child(self: Tree, is_left: bool) ?*Tree {
     if (self.link(is_left)) |l| {
-      if (@as(LinkTag, l) == LinkTag.Pruned) {
-        var _h = l.hash().?.inner;
-        var _child = Tree.fetchTree(&_h);
-        return _child;
-      }
+      if (@as(LinkTag, l) == .Pruned) return Tree.fetchTree(&l.hash().?.inner);
       return l.tree();
-    } else {
-      return null;
     }
+    return null;
   }
 
-  pub fn childHash(self: Tree, is_left: bool) Hash {
-    if (self.link(is_left)) |l| {
-      return l.hash().?;
-    } else {
-      return h.ZeroHash;
-    }
-  }
-
-  pub fn hash(self: Tree) Hash {
-    return h.nodeHash(self.kvHash(), self.childHash(true), self.childHash(false));
-  }
-
-  pub fn childHeight(self: Tree, is_left: bool) u8 {
-    if(self.link(is_left)) |l| {
-      return l.height();
-    } else {
-      return 0;
-    }
-  }
-
-  pub fn childHeights(self: Tree) [2]u8 {
-    return [2]u8{ self.childHeight(true), self.childHeight(false) };
-  }
-
-  pub fn height(self: Tree) u8 {
-    return 1 + std.mem.max(u8, self.childHeights()[0..]);
+  pub fn link(self: Tree, is_left: bool) ?Link {
+    if (is_left) return self.left;
+    return self.right;
   }
 
   pub fn setLink(self: *Tree, is_left: bool, l: ?Link) void {
-    if (is_left) {
-      self.left = l;
-    } else {
-      self.right = l;
-    }
+    if (is_left) { self.left = l; }
+    else { self.right = l; }
   }
 
-  pub fn balanceFactor(self: *Tree) i16 {
-    return @as(i16, self.childHeight(false)) - @as(i16, self.childHeight(true));
-  }
+  pub fn balanceFactor(self: *Tree) i16 { return @as(i16, self.childHeight(false)) - @as(i16, self.childHeight(true)); }
 
   pub fn attach(self: *Tree, is_left: bool, tree: ?*Tree) void {
     if (tree) |t| {
-      if (mem.eql(u8, t.key(), self.key())) {
-        @panic("BUG: tried to attach tree with same key");
-      }
+      if (mem.eql(u8, t.key(), self.key())) @panic("BUG: tried to attach tree with same key");
+      if (self.link(is_left)) |l| @panic("BUG: tried to attach to tree slot, but it is already some");
 
-      if (self.link(is_left)) |l| {
-        @panic("BUG: tried to attach to tree slot, but it is already some");
-      }
-
-      var slot: Link = Link.fromModifiedTree(t);
-
-      self.setLink(is_left, slot);
-    } else {
-      return;
+      self.setLink(is_left, Link.fromModifiedTree(t));
     }
   }
 
@@ -125,33 +87,27 @@ pub const Tree = struct {
     if (self.link(is_left)) |slot| {
       self.setLink(is_left, null);
 
-      if (@as(LinkTag, slot) == LinkTag.Pruned) {
+      if (@as(LinkTag, slot) == .Pruned) {
         var _h = slot.hash().?.inner;
         var _child = Tree.fetchTree(&_h);
         return _child;
       }
 
       return slot.tree();
-    } else {
-      return null;
     }
-  }
-
-  pub fn updateVal(self: *Tree, val: []const u8) void {
-    self.kv.val = val;
-    self.kv.hash = h.kvHash(self.kv.key, val);
+    return null;
   }
 
   pub fn commit(self: *Tree, c: *Commiter) void {
     if(self.link(true)) |l| {
-      if (@as(LinkTag, l) == LinkTag.Modified) {
+      if (@as(LinkTag, l) == .Modified) {
         l.tree().?.commit(c);
         self.setLink(true, l.intoStored(undefined));
       }
     }
 
     if(self.link(false)) |l| {
-      if (@as(LinkTag, l) == LinkTag.Modified) {
+      if (@as(LinkTag, l) == .Modified) {
         l.tree().?.commit(c);
         self.setLink(false, l.intoStored(undefined));
       }
@@ -161,12 +117,8 @@ pub const Tree = struct {
 
     // TODO: free tree buf allocation
     if (c.prune(self)) {
-      if (self.link(true)) |l| {
-        self.setLink(true, l.intoPruned());
-      }
-      if (self.link(false)) |l| {
-        self.setLink(false, l.intoPruned());
-      }
+      if (self.link(true)) |l| self.setLink(true, l.intoPruned());
+      if (self.link(false)) |l| self.setLink(false, l.intoPruned());
     }
   }
 
@@ -247,14 +199,13 @@ pub const Tree = struct {
 
   pub fn verify(self: *Tree) bool {
     if (self.link(true)) |l| {
-      if (@as(LinkTag, l) != LinkTag.Pruned) {
+      if (@as(LinkTag, l) != .Pruned) {
         if (std.mem.lessThan(u8, self.key(), l.key())) @panic("unbalanced tree");
         _ = l.tree().?.verify();
       }
     }
-
     if (self.link(false)) |l| {
-      if (@as(LinkTag, l) != LinkTag.Pruned) {
+      if (@as(LinkTag, l) != .Pruned) {
         if (!std.mem.lessThan(u8, self.key(), l.key())) @panic("unbalanced tree");
         _ = l.tree().?.verify();
       }

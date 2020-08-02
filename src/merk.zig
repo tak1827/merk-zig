@@ -1,12 +1,11 @@
 const std = @import("std");
-const warn = std.debug.warn;
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
-const o = @import("ops.zig");
-const Op = o.Op;
-const OpTag = o.OpTag;
-const db = @import("db.zig");
-const DB = db.DB;
+const ops = @import("ops.zig");
+const Op = ops.Op;
+const OpTag = ops.OpTag;
+const DB = @import("db.zig").DB;
+const root_key = @import("db.zig").root_key;
 const Hash = @import("hash.zig").Hash;
 const ZeroHash = @import("hash.zig").ZeroHash;
 const Commiter = @import("commit.zig").Commiter;
@@ -27,7 +26,7 @@ pub const Merk = struct {
     var buf: [1024]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     var w = fbs.writer();
-    _= try DB.read(db.root_key, w);
+    _= try DB.read(root_key, w);
 
     const top_key = fbs.getWritten();
     if (top_key.len == 0) {
@@ -65,7 +64,7 @@ pub const Merk = struct {
   }
 
   pub fn applyUnchecked(self: *Merk, batch: []Op) void {
-    self.tree = o.applyTo(self.tree, batch);
+    self.tree = ops.applyTo(self.tree, batch);
   }
 
   pub fn commit(self: *Merk) !void {
@@ -75,7 +74,7 @@ pub const Merk = struct {
     if (self.tree) |tree| {
       var commiter = Commiter.init(tree.height());
       tree.commit(&commiter);
-      try DB.putBatch(db.root_key, self.rootHash().inner[0..]);
+      try DB.putBatch(root_key, self.rootHash().inner[0..]);
     } else {
       // TODO: delete root key
     }
@@ -83,6 +82,7 @@ pub const Merk = struct {
     try DB.write();
   }
 };
+
 
 test "init" {
   var merk = try Merk.init();
@@ -154,10 +154,10 @@ test "apply and commit" {
   try merk.commit();
 
   testing.expect(merk.tree.?.verify());
-  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(true).?), LinkTag.Pruned);
-  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(false).?), LinkTag.Pruned);
-  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), LinkTag.Pruned);
-  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), LinkTag.Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(true).?), .Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(false).?), .Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), .Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), .Pruned);
 }
 
 

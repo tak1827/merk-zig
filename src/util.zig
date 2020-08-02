@@ -1,11 +1,11 @@
 const std = @import("std");
 const testing = std.testing;
-const warn = std.debug.warn;
 
 pub fn concat(bufs: []const []const u8) []const u8 {
   if (std.mem.concat(std.heap.c_allocator, u8, bufs)) |concated| {
     return concated;
   } else |err| {
+    std.debug.print("error while concatnating, {}\n", .{err});
     @panic("failed to concatnate");
   }
 }
