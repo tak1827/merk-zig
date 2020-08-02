@@ -1,6 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
-const assert = std.debug.assert;
+const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const KV = @import("kv.zig").KV;
 const h = @import("hash.zig");
@@ -128,33 +128,28 @@ pub const Stored = struct {
 test "key" {
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
-  assert(std.mem.eql(u8, l.key(), "key"));
+  testing.expectEqualSlices(u8, l.key(), "key");
 }
 
 test "tree" {
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
   var linkedTree = l.tree().?;
-  assert(&tree == linkedTree);
+  testing.expectEqual(&tree, linkedTree);
 }
 
 test "hash" {
   const kvHash = h.kvHash("key", "value");
   const l: Link = Link{ .Pruned =  Pruned{ .hash = kvHash, .child_heights = .{0, 2} } };
-  assert(std.mem.eql(u8, l.hash().?.inner[0..], kvHash.inner[0..]));
+  testing.expectEqualSlices(u8, l.hash().?.inner[0..], kvHash.inner[0..]);
 }
 
 test "height" {
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2}, .tree = undefined } };
-  assert(l.height() == 3);
+  testing.expectEqual(l.height(), 3);
 }
 
 test "balanceFactor" {
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{2, 0}, .tree = undefined } };
-  assert(l.balanceFactor() == -2);
-}
-
-pub fn main() !void {
-  const p: Link.Pruned = Link.Pruned.init("hoge");
-  warn("val: {}, type: {}\n", .{p, @typeName(@TypeOf(p))});
+  testing.expectEqual(l.balanceFactor(), -2);
 }

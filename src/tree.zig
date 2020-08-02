@@ -1,5 +1,5 @@
 const std = @import("std");
-const assert = std.debug.assert;
+const testing = std.testing;
 const mem = std.mem;
 const KV = @import("kv.zig").KV;
 const Link = @import("link.zig").Link;
@@ -24,7 +24,6 @@ pub const Tree = struct {
 
   pub fn init(k: []const u8, v: []const u8) *Tree {
     var tree = buffer.allocator.create(Tree) catch |err| @panic("BUG: failed to create Tree");
-    // std.debug.print("tree inited: {}\n", .{&tree});
     tree.kv = KV.init(k, v);
     tree.left = null;
     tree.right = null;
@@ -55,7 +54,6 @@ pub const Tree = struct {
     if (self.link(is_left)) |l| {
       if (@as(LinkTag, l) == LinkTag.Pruned) {
         var _h = l.hash().?.inner;
-        // TODO: no unreachable
         var _child = Tree.fetchTree(&_h);
         return _child;
       }
@@ -278,10 +276,10 @@ test "marshal and unmarshal" {
   var marshaled: []const u8 = fbs.getWritten();
   var unmarshaled = try Tree.unmarshal(marshaled);
 
-  assert(mem.eql(u8, unmarshaled.key(), "key"));
-  assert(mem.eql(u8, unmarshaled.value(), "value"));
-  assert(mem.eql(u8, unmarshaled.link(true).?.hash().?.inner[0..], hash_l.inner[0..]));
-  assert(mem.eql(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]));
+  testing.expectEqualSlices(u8, unmarshaled.key(), "key");
+  testing.expectEqualSlices(u8, unmarshaled.value(), "value");
+  testing.expectEqualSlices(u8, unmarshaled.link(true).?.hash().?.inner[0..], hash_l.inner[0..]);
+  testing.expectEqualSlices(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]);
 }
 
 test "detach" {
@@ -289,45 +287,45 @@ test "detach" {
   var tree2 = Tree.init("key2", "value2");
   tree1.attach(false, tree2);
   var tree3 = tree1.detach(false);
-  assert(tree3 == tree2);
-  assert(tree1.link(true) == null);
-  assert(tree1.link(false) == null);
+  testing.expectEqual(tree3, tree2);
+  testing.expectEqual(tree1.link(true), null);
+  testing.expectEqual(tree1.link(false), null);
 }
 
 test "init" {
   const key = "key";
   const val = "value";
   const tree = Tree.init(key, val);
-  assert(mem.eql(u8, tree.kv.key, key));
+  testing.expectEqualSlices(u8, tree.kv.key, key);
 }
 
 test "key" {
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
-  assert(mem.eql(u8, tree.key(), "key"));
+  testing.expectEqualSlices(u8, tree.key(), "key");
 }
 
 test "value" {
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
-  assert(mem.eql(u8, tree.value(), "value"));
+  testing.expectEqualSlices(u8, tree.value(), "value");
 }
 
 test "childHash" {
   const hash = h.kvHash("key", "value");
   var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{0, 0} } };
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = null };
-  assert(mem.eql(u8, tree.childHash(true).inner[0..], hash.inner[0..]));
-  assert(mem.eql(u8, tree.childHash(false).inner[0..], h.ZeroHash.inner[0..]));
+  testing.expectEqualSlices(u8, tree.childHash(true).inner[0..], hash.inner[0..]);
+  testing.expectEqualSlices(u8, tree.childHash(false).inner[0..], h.ZeroHash.inner[0..]);
 }
 
 test "height" {
   var left: Link = Link{ .Pruned = Pruned{ .hash = undefined, .child_heights = .{0, 2} } };
   var tree: Tree = Tree{ .kv = undefined, .left = left, .right = null };
-  assert(tree.height() == 4);
+  testing.expectEqual(tree.height(), 4);
 }
 
 test "attach" {
   var tree1 = Tree.init("key1", "value1");
   var tree2 = Tree.init("key2", "value2");
   tree1.attach(false, tree2);
-  assert(mem.eql(u8, tree1.right.?.tree().?.key()[0..], tree2.key()[0..]));
+  testing.expectEqualSlices(u8, tree1.right.?.tree().?.key()[0..], tree2.key()[0..]);
 }

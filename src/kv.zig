@@ -1,5 +1,5 @@
 const std = @import("std");
-const assert = std.debug.assert;
+const testing = std.testing;
 const mem = std.mem;
 const h = @import("hash.zig");
 const Hash = h.Hash;
@@ -19,7 +19,7 @@ test "init" {
   var expected: [32]u8 = undefined;
   std.crypto.Blake2s256.hash("keyvalue", &expected);
 
-  assert(mem.eql(u8, kv.key[0..], "key"));
-  assert(mem.eql(u8, kv.val[0..], "value"));
-  assert(mem.eql(u8, kv.hash.inner[0..], expected[0..]));
+  testing.expectEqualSlices(u8, kv.key[0..], "key");
+  testing.expectEqualSlices(u8, kv.val[0..], "value");
+  testing.expectEqualSlices(u8, kv.hash.inner[0..], expected[0..]);
 }

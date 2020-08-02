@@ -1,6 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
-const assert = std.debug.assert;
+const testing = std.testing;
 const mem = std.mem;
 const util = @import("util.zig");
 
@@ -36,7 +36,7 @@ test "kvHash" {
   var expected: [32]u8 = undefined;
   std.crypto.Blake2s256.hash("keyvalue", &expected);
 
-  assert(mem.eql(u8, kv.inner[0..], expected[0..]));
+  testing.expectEqualSlices(u8, kv.inner[0..], expected[0..]);
 }
 
 // TODO: change smart way to confirm no error

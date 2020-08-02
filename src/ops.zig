@@ -1,6 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
-const assert = std.debug.assert;
+const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 
 pub const OpTag = enum {
@@ -153,34 +153,34 @@ test "apply" {
 
   var batch1 = [_]Op{op3, op6, op8};
   var tree = applyTo(null, &batch1);
-  assert(tree.verify());
-  assert(std.mem.eql(u8, tree.key(), "key6"));
-  assert(std.mem.eql(u8, tree.child(true).?.key(), "key3"));
-  assert(std.mem.eql(u8, tree.child(false).?.key(), "key8"));
+  testing.expect(tree.verify());
+  testing.expectEqualSlices(u8, tree.key(), "key6");
+  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
+  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
 
   var batch2 = [_]Op{op0, op1, op2, op3, op6, op8};
   tree = applyTo(tree, &batch2);
-  assert(tree.verify());
-  assert(std.mem.eql(u8, tree.key(), "key3"));
-  assert(std.mem.eql(u8, tree.child(true).?.key(), "key1"));
-  assert(std.mem.eql(u8, tree.child(true).?.child(true).?.key(), "key0"));
-  assert(std.mem.eql(u8, tree.child(true).?.child(false).?.key(), "key2"));
-  assert(std.mem.eql(u8, tree.child(false).?.key(), "key6"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(false).?.key(), "key8"));
+  testing.expect(tree.verify());
+  testing.expectEqualSlices(u8, tree.key(), "key3");
+  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
+  testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
+  testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
+  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
 
   var batch3 = [_]Op{op0, op4, op5, op7, op9};
   tree = applyTo(tree, &batch3);
-  assert(tree.verify());
-  assert(std.mem.eql(u8, tree.key(), "key3"));
-  assert(std.mem.eql(u8, tree.child(true).?.key(), "key1"));
-  assert(std.mem.eql(u8, tree.child(true).?.child(true).?.key(), "key0"));
-  assert(std.mem.eql(u8, tree.child(true).?.child(false).?.key(), "key2"));
-  assert(std.mem.eql(u8, tree.child(false).?.key(), "key6"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(true).?.key(), "key5"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(true).?.child(true).?.key(), "key4"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(false).?.key(), "key8"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(false).?.child(true).?.key(), "key7"));
-  assert(std.mem.eql(u8, tree.child(false).?.child(false).?.child(false).?.key(), "key9"));
+  testing.expect(tree.verify());
+  testing.expectEqualSlices(u8, tree.key(), "key3");
+  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
+  testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
+  testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
+  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.key(), "key5");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.child(true).?.key(), "key4");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(true).?.key(), "key7");
+  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(false).?.key(), "key9");
 
   // TODO: delete case
 }
@@ -193,9 +193,9 @@ test "build" {
   };
 
   var tree = build(&batch);
-  assert(std.mem.eql(u8, tree.key(), "key3"));
-  assert(std.mem.eql(u8, tree.child(true).?.key(), "key2"));
-  assert(std.mem.eql(u8, tree.child(false).?.key(), "key5"));
+  testing.expectEqualSlices(u8, tree.key(), "key3");
+  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key2");
+  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key5");
 }
 
 test "binaryBatchSearch" {
@@ -208,18 +208,18 @@ test "binaryBatchSearch" {
   var found: bool = false;
   var index: usize = 0;
   binaryBatchSearch("key3", &batch, &found, &index);
-  assert(found);
-  assert(index == 1);
+  testing.expect(found);
+  testing.expectEqual(index, 1);
   binaryBatchSearch("key5", &batch, &found, &index);
-  assert(found);
-  assert(index == 2);
+  testing.expect(found);
+  testing.expectEqual(index, 2);
   binaryBatchSearch("key4", &batch, &found, &index);
-  assert(!found);
-  assert(index == 2);
+  testing.expect(!found);
+  testing.expectEqual(index, 2);
   binaryBatchSearch("key1", &batch, &found, &index);
-  assert(!found);
-  assert(index == 0);
+  testing.expect(!found);
+  testing.expectEqual(index, 0);
   binaryBatchSearch("key6", &batch, &found, &index);
-  assert(!found);
-  assert(index == 3);
+  testing.expect(!found);
+  testing.expectEqual(index, 3);
 }

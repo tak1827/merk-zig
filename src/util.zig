@@ -1,5 +1,5 @@
 const std = @import("std");
-const assert = std.debug.assert;
+const testing = std.testing;
 const warn = std.debug.warn;
 
 pub fn concat(bufs: []const []const u8) []const u8 {
@@ -16,5 +16,5 @@ test "concat" {
   var concated = concat(&[2][]const u8{key, val});
   defer std.heap.c_allocator.free(concated);
 
-  assert(std.mem.eql(u8, "keyvalue", concated));
+  testing.expectEqualSlices(u8, "keyvalue", concated);
 }

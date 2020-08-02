@@ -1,6 +1,6 @@
 const std = @import("std");
 const c = @cImport(@cInclude("rocksdb/c.h"));
-const assert = std.debug.assert;
+const testing = std.testing;
 
 // TODO: consider to move DB struct
 pub var merk_db: ?*c.rocksdb_t = null;
@@ -138,10 +138,10 @@ test "batch" {
   var fbs = std.io.fixedBufferStream(&buf);
   var w = fbs.writer();
   _ = try DB.read(key, w);
-  assert(std.mem.eql(u8, fbs.getWritten(), val));
+  testing.expectEqualSlices(u8, fbs.getWritten(), val);
   fbs.reset();
   _ = try DB.read(keyX, w);
-  assert(std.mem.eql(u8, fbs.getWritten(), valX));
+  testing.expectEqualSlices(u8, fbs.getWritten(), valX);
 }
 
 // pub fn main() !void {

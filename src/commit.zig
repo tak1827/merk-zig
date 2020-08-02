@@ -1,7 +1,6 @@
 const std = @import("std");
 const c = @cImport(@cInclude("rocksdb/c.h"));
-const warn = std.debug.warn;
-const assert = std.debug.assert;
+const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const o = @import("ops.zig");
 const Op = o.Op;
@@ -64,5 +63,5 @@ test "write" {
   var w = fbs.writer();
   _= try DB.read(key, w);
 
-  assert(std.mem.eql(u8, fbs.getWritten(), val));
+  testing.expectEqualSlices(u8, fbs.getWritten(), val);
 }

@@ -1,6 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
-const assert = std.debug.assert;
+const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const o = @import("ops.zig");
 const Op = o.Op;
@@ -106,7 +106,7 @@ test "init" {
 //   try merk.apply(&batch);
 //   try merk.commit();
 
-//   assert(merk.tree.?.verify());
+//   testing.expect(merk.tree.?.verify());
 
 //   var top_key = merk.rootHash().inner[0..];
 //   std.debug.print("top_key: {x}\n", .{top_key});
@@ -153,11 +153,11 @@ test "apply and commit" {
 
   try merk.commit();
 
-  assert(merk.tree.?.verify());
-  assert(@as(LinkTag, merk.tree.?.child(true).?.link(true).?) == LinkTag.Pruned);
-  assert(@as(LinkTag, merk.tree.?.child(true).?.link(false).?) == LinkTag.Pruned);
-  assert(@as(LinkTag, merk.tree.?.child(false).?.link(true).?) == LinkTag.Pruned);
-  assert(@as(LinkTag, merk.tree.?.child(false).?.link(false).?) == LinkTag.Pruned);
+  testing.expect(merk.tree.?.verify());
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(true).?), LinkTag.Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(true).?.link(false).?), LinkTag.Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), LinkTag.Pruned);
+  testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), LinkTag.Pruned);
 }
 
 
@@ -169,12 +169,8 @@ test "apply" {
   var op2 = Op{ .op = OpTag.Put, .key = "key2", .val = "value" };
 
   var batch1 = [_]Op{op0, op2, op1};
-  merk.apply(&batch1) catch |err| {
-    assert(err == BatchError.InvalidOrder);
-  };
+  testing.expectError(BatchError.InvalidOrder, merk.apply(&batch1));
 
   var batch2 = [_]Op{op0, op2, op2};
-  merk.apply(&batch2) catch |err| {
-    assert(err == BatchError.Invalid);
-  };
+  testing.expectError(BatchError.Invalid, merk.apply(&batch2));
 }
