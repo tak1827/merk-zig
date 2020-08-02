@@ -12,23 +12,27 @@ const o = @import("ops.zig");
 const Commiter = @import("commit.zig").Commiter;
 const DB = @import("db.zig").DB;
 
-// TODO: move to main
-var tree_buf: [65536]u8 = undefined;
-// TODO: switch to ArenaAllocator
-var buffer = std.heap.FixedBufferAllocator.init(&tree_buf);
-
 pub const Tree = struct {
   kv: KV,
   left: ?Link,
   right: ?Link,
 
+  // TODO: consider move to local
+  var tree_buf: [65536]u8 = undefined;
+  var buffer = std.heap.FixedBufferAllocator.init(&tree_buf);
+  var arena = std.heap.ArenaAllocator.init(
+    &buffer.allocator
+  );
+
   pub fn init(k: []const u8, v: []const u8) *Tree {
-    var tree = buffer.allocator.create(Tree) catch |err| @panic("BUG: failed to create Tree");
+    var tree = Tree.arena.allocator.create(Tree) catch |err| @panic("BUG: failed to create Tree");
     tree.kv = KV.init(k, v);
     tree.left = null;
     tree.right = null;
     return tree;
   }
+
+  pub fn bufDelete() void { Tree.arena.deinit(); }
 
   pub fn key(self: Tree) []const u8 { return self.kv.key; }
 
@@ -125,8 +129,8 @@ pub const Tree = struct {
   pub fn fetchTree(k: []const u8) *Tree {
     var buf: [1024]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
-    var w = fbs.writer();
-    _= DB.read(k, w) catch unreachable;
+    _= DB.read(k, fbs.writer()) catch unreachable;
+
     var tree = Tree.unmarshal(fbs.getWritten()) catch unreachable;
     return tree;
   }
@@ -222,8 +226,7 @@ test "marshal and unmarshal" {
   var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = right };
   var buf: [255]u8 = undefined;
   var fbs = std.io.fixedBufferStream(&buf);
-  var w = fbs.writer();
-  try tree.marshal(w);
+  try tree.marshal(fbs.writer());
   var marshaled: []const u8 = fbs.getWritten();
   var unmarshaled = try Tree.unmarshal(marshaled);
 
@@ -279,4 +282,9 @@ test "attach" {
   var tree2 = Tree.init("key2", "value2");
   tree1.attach(false, tree2);
   testing.expectEqualSlices(u8, tree1.right.?.tree().?.key()[0..], tree2.key()[0..]);
+}
+
+pub fn main() !void {
+  defer Tree.arena.deinit();
+  _ = Tree.init("key", "value");
 }

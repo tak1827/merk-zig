@@ -2,26 +2,21 @@ const std = @import("std");
 const c = @cImport(@cInclude("rocksdb/c.h"));
 const testing = std.testing;
 
-// TODO: consider to move DB struct
-pub var merk_db: ?*c.rocksdb_t = null;
-pub var merk_batch: ?*c.rocksdb_writebatch_t = null;
-
 pub const db_name = "db";
 pub const root_key = ".root";
 pub const node_key_prefix = "@1:";
 
-const DBError = error {
-  DuplicatedOpen,
-  NotOpen,
-  DuplicatedBatch,
-  NoBatch,
-};
+const DBError = error { DuplicatedOpen, NotOpen, DuplicatedBatch, NoBatch };
 
 pub const DB = struct {
 
+  // TODO: consider to move DB struct
+  pub var merk_db: ?*c.rocksdb_t = null;
+  pub var merk_batch: ?*c.rocksdb_writebatch_t = null;
+
   // TODO: specify directry
   pub fn open() !void {
-    if (merk_db) |_| return DBError.DuplicatedOpen;
+    if (DB.merk_db) |_| return DBError.DuplicatedOpen;
 
     // TODO: custom options
     const opts = c.rocksdb_options_create();
@@ -32,26 +27,24 @@ pub const DB = struct {
     c.rocksdb_options_set_create_if_missing(opts, @boolToInt(true));
 
     var err: ?[*:0]u8 = null;
-    merk_db = c.rocksdb_open(opts, db_name, &err);
+    DB.merk_db = c.rocksdb_open(opts, db_name, &err);
     if (err) |message| @panic(std.mem.spanZ(message));
   }
 
   pub fn destroy() void {
-    if (merk_db) |db| c.rocksdb_delete_file(db, db_name);
+    if (DB.merk_db) |db| c.rocksdb_delete_file(db, db_name);
   }
 
   pub fn close() void {
-    if (merk_db) |db| {
-      c.rocksdb_close(db);
-      merk_db = null;
-    }
+    if (DB.merk_db) |db| c.rocksdb_close(db);
+    DB.merk_db = null;
   }
 
   pub fn write() !void {
-    if (merk_db) |db| {
+    if (DB.merk_db) |db| {
       const write_opts = c.rocksdb_writeoptions_create();
       var err: ?[*:0]u8 = null;
-      c.rocksdb_write(db, write_opts, merk_batch, &err);
+      c.rocksdb_write(db, write_opts, DB.merk_batch, &err);
       if (err) |message| @panic(std.mem.spanZ(message));
     } else {
       return DBError.NotOpen;
@@ -60,7 +53,7 @@ pub const DB = struct {
 
   // TODO: use an allocator
   pub fn read(key: []const u8, w: anytype) !usize {
-    if (merk_db) |db| {
+    if (DB.merk_db) |db| {
       const read_opts = c.rocksdb_readoptions_create();
       defer c.rocksdb_readoptions_destroy(read_opts);
 
@@ -80,22 +73,20 @@ pub const DB = struct {
   }
 
   pub fn createBatch() !void {
-    if (merk_batch) |_| return DBError.DuplicatedBatch;
-    merk_batch = c.rocksdb_writebatch_create();
+    if (DB.merk_batch) |_| return DBError.DuplicatedBatch;
+    DB.merk_batch = c.rocksdb_writebatch_create();
   }
 
   pub fn putBatch(key: []const u8, val: []const u8) !void {
-    if (merk_batch) |batch| {
+    if (DB.merk_batch) |batch| {
       return c.rocksdb_writebatch_put(batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len);
     }
     return DBError.NoBatch;
   }
 
   pub fn destroyBatch() void {
-    if (merk_batch) |batch| {
-      c.rocksdb_writebatch_destroy(batch);
-      merk_batch = null;
-    }
+    if (DB.merk_batch) |batch| c.rocksdb_writebatch_destroy(batch);
+    DB.merk_batch = null;
   }
 };
 
@@ -117,10 +108,9 @@ test "batch" {
 
   var buf: [1024]u8 = undefined;
   var fbs = std.io.fixedBufferStream(&buf);
-  var w = fbs.writer();
-  _ = try DB.read(key, w);
+  _ = try DB.read(key, fbs.writer());
   testing.expectEqualSlices(u8, fbs.getWritten(), val);
   fbs.reset();
-  _ = try DB.read(keyX, w);
+  _ = try DB.read(keyX, fbs.writer());
   testing.expectEqualSlices(u8, fbs.getWritten(), valX);
 }

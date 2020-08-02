@@ -11,10 +11,7 @@ const ZeroHash = @import("hash.zig").ZeroHash;
 const Commiter = @import("commit.zig").Commiter;
 const LinkTag = @import("link.zig").LinkTag;
 
-const BatchError = error {
-  InvalidOrder,
-  Invalid,
-};
+const BatchError = error { InvalidOrder, Invalid };
 
 pub const Merk = struct {
   tree: ?*Tree = null,
@@ -25,14 +22,12 @@ pub const Merk = struct {
 
     var buf: [1024]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
-    var w = fbs.writer();
-    _= try DB.read(root_key, w);
-
-    const top_key = fbs.getWritten();
-    if (top_key.len == 0) {
+    const top_key_len = try DB.read(root_key, fbs.writer());
+    if (top_key_len == 0) {
       return merk;
     }
-    var tree = Tree.fetchTrees(top_key);
+
+    var tree = Tree.fetchTrees(fbs.getWritten());
     merk.tree = tree;
     return merk;
   }

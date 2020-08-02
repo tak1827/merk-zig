@@ -8,15 +8,15 @@ const OpTag = o.OpTag;
 const db = @import("db.zig");
 const DB = db.DB;
 
-const DafaultLevels: u8 = 1;
-
 pub const Commiter = struct {
   height: u8,
   levels: u8,
 
+  const DafaultLevels: u8 = 1;
+
   // TODO: pass level as arguments
   pub fn init(height: u8) Commiter {
-    return Commiter{ .height = height, .levels = DafaultLevels };
+    return Commiter{ .height = height, .levels = Commiter.DafaultLevels };
   }
 
   pub fn prune(self: *Commiter, tree: *Tree) bool {
@@ -24,15 +24,11 @@ pub const Commiter = struct {
   }
 
   pub fn write(tree: *Tree) void {
-    const key = tree.hash().inner[0..];
-    // TODO: consider change more daynamic way
     var buf: [1024]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
-    var w = fbs.writer();
-    tree.marshal(w) catch unreachable;
-    var val: []u8 = fbs.getWritten();
+    tree.marshal(fbs.writer()) catch unreachable;
 
-    DB.putBatch(key, val) catch unreachable;
+    DB.putBatch(tree.hash().inner[0..], fbs.getWritten()) catch unreachable;
   }
 };
 
@@ -50,9 +46,7 @@ test "write" {
 
   var buf_m: [1024]u8 = undefined;
   var fbs_m = std.io.fixedBufferStream(&buf_m);
-  var w_m = fbs_m.writer();
-  try tree.marshal(w_m);
-  var val: []u8 = fbs_m.getWritten();
+  try tree.marshal(fbs_m.writer());
 
   try DB.write();
 
@@ -60,8 +54,7 @@ test "write" {
 
   var buf: [1024]u8 = undefined;
   var fbs = std.io.fixedBufferStream(&buf);
-  var w = fbs.writer();
-  _= try DB.read(key, w);
+  _= try DB.read(key, fbs.writer());
 
-  testing.expectEqualSlices(u8, fbs.getWritten(), val);
+  testing.expectEqualSlices(u8, fbs.getWritten(), fbs_m.getWritten());
 }
