@@ -39,10 +39,9 @@ test "kvHash" {
   testing.expectEqualSlices(u8, kv.inner[0..], expected[0..]);
 }
 
-// TODO: change smart way to confirm no error
 test "nodeHash" {
   const kv = kvHash("key", "value");
   const left = kvHash("lkey", "lvalue");
   const right = kvHash("rkey", "rvalue");
-  const h = nodeHash(kv, left, right);
+  _ = nodeHash(kv, left, right);
 }

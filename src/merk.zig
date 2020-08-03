@@ -63,11 +63,11 @@ pub const Merk = struct {
   }
 
   pub fn commit(self: *Merk) !void {
-    try DB.createBatch();
-    defer DB.destroyBatch();
+    var commiter: Commiter = undefined;
+    defer commiter.destroy();
 
     if (self.tree) |tree| {
-      var commiter = Commiter.init(tree.height());
+      commiter= try Commiter.init(tree.height());
       tree.commit(&commiter);
       try DB.putBatch(root_key, self.rootHash().inner[0..]);
     } else {

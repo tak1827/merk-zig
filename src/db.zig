@@ -51,7 +51,6 @@ pub const DB = struct {
     }
   }
 
-  // TODO: use an allocator
   pub fn read(key: []const u8, w: anytype) !usize {
     if (DB.merk_db) |db| {
       const read_opts = c.rocksdb_readoptions_create();

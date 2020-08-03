@@ -15,9 +15,12 @@ pub const Commiter = struct {
   const DafaultLevels: u8 = 1;
 
   // TODO: pass level as arguments
-  pub fn init(height: u8) Commiter {
+  pub fn init(height: u8) !Commiter {
+    try DB.createBatch();
     return Commiter{ .height = height, .levels = Commiter.DafaultLevels };
   }
+
+  pub fn destroy(self: Commiter) void { DB.destroyBatch(); }
 
   pub fn prune(self: *Commiter, tree: *Tree) bool {
     return self.height - tree.height() >= self.levels;
