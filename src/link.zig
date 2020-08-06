@@ -71,7 +71,7 @@ pub const Link = union(LinkTag) {
 
   pub fn fromMarshal(buf: []const u8) Link {
     var _h: Hash = undefined;
-    std.mem.copy(u8, _h.inner[0..], buf);
+    std.mem.copy(u8, &_h.inner, buf);
     return Link{ .Pruned = Pruned{ .hash = _h, .child_heights = [2]u8{0, 0} }};
   }
 
@@ -118,13 +118,13 @@ pub const Stored = struct {
 };
 
 test "key" {
-  var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
+  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
   testing.expectEqualSlices(u8, l.key(), "key");
 }
 
 test "tree" {
-  var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
+  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
   var linkedTree = l.tree().?;
   testing.expectEqual(&tree, linkedTree);

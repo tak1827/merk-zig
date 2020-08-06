@@ -2,9 +2,9 @@ const std = @import("std");
 const c = @cImport(@cInclude("rocksdb/c.h"));
 const testing = std.testing;
 
-pub const db_name = "db";
 pub const root_key = ".root";
 pub const node_key_prefix = "@1:";
+const default_db_name = "db";
 
 const DBError = error { DuplicatedOpen, NotOpen, DuplicatedBatch, NoBatch };
 
@@ -15,7 +15,7 @@ pub const DB = struct {
   pub var merk_batch: ?*c.rocksdb_writebatch_t = null;
 
   // TODO: specify directry
-  pub fn open() !void {
+  pub fn open(name: ?[]const u8) !void {
     if (DB.merk_db) |_| return DBError.DuplicatedOpen;
 
     // TODO: custom options
@@ -27,12 +27,24 @@ pub const DB = struct {
     c.rocksdb_options_set_create_if_missing(opts, @boolToInt(true));
 
     var err: ?[*:0]u8 = null;
-    DB.merk_db = c.rocksdb_open(opts, db_name, &err);
+    if (name) |n| {
+      const c_name = @ptrCast([*:0]const u8, n);
+      DB.merk_db = c.rocksdb_open(opts, c_name, &err);
+    } else {
+      DB.merk_db = c.rocksdb_open(opts, default_db_name, &err);
+    }
     if (err) |message| @panic(std.mem.spanZ(message));
   }
 
-  pub fn destroy() void {
-    if (DB.merk_db) |db| c.rocksdb_delete_file(db, db_name);
+  pub fn destroy(name: ?[]const u8) void {
+    if (DB.merk_db) |db| {
+      if (name) |n| {
+        const c_name = @ptrCast([*:0]const u8, n);
+        c.rocksdb_delete_file(db, c_name);
+      } else {
+        c.rocksdb_delete_file(db, default_db_name);
+      }
+    }
   }
 
   pub fn close() void {
@@ -90,7 +102,7 @@ pub const DB = struct {
 };
 
 test "batch" {
-  try DB.open();
+  try DB.open("dbtest");
   defer DB.close();
 
   try DB.createBatch();
