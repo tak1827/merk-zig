@@ -2,3 +2,4 @@
 zig-cache
 db
 dbtest
+tmp.zig

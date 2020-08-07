@@ -8,8 +8,7 @@ const Op = ops.Op;
 const OpTag = ops.OpTag;
 const DB = @import("db.zig").DB;
 const root_key = @import("db.zig").root_key;
-const Hash = @import("hash.zig").Hash;
-const ZeroHash = @import("hash.zig").ZeroHash;
+const Hash = @import("hash.zig").HashBlake2s256;
 const Commiter = @import("commit.zig").Commiter;
 const LinkTag = @import("link.zig").LinkTag;
 
@@ -43,7 +42,7 @@ pub const Merk = struct {
         if (self.tree) |tree| {
             return tree.hash();
         } else {
-            return ZeroHash;
+            return Hash.zeroHash();
         }
     }
 

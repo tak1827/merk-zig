@@ -2,8 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
-const HashFunc = @import("hash.zig").HashFunc;
-const Hash = @import("hash.zig").Hash;
+const Hash = @import("hash.zig").HashBlake2s256;
 const util = @import("util.zig");
 
 pub const KV = struct {
@@ -16,12 +15,9 @@ pub const KV = struct {
     }
 
     pub fn kvHash(allocator: *Allocator, key: []const u8, val: []const u8) Hash {
-        var h: Hash = undefined;
         var kv = util.concat(allocator, &[2][]const u8{ key, val });
         defer allocator.free(kv);
-
-        HashFunc.hash(kv, &h.inner);
-        return h;
+        return Hash.init(kv);
     }
 
     pub fn nodeHash(allocator: *Allocator, kv: Hash, left: Hash, right: Hash) Hash {
@@ -31,27 +27,24 @@ pub const KV = struct {
         concated = util.concat(allocator, &[2][]const u8{ concated, right.inner[0..] });
         defer allocator.free(concated);
 
-        HashFunc.hash(concated[0..], &h.inner);
-        return h;
+        return Hash.init(concated);
     }
 };
 
 test "init" {
     const kv = KV.init(testing.allocator, "key", "value");
-    var expected: [32]u8 = undefined;
-    HashFunc.hash("keyvalue", &expected);
+    const expected = Hash.init("keyvalue");
 
     testing.expectEqualSlices(u8, kv.key, "key");
     testing.expectEqualSlices(u8, kv.val, "value");
-    testing.expectEqualSlices(u8, &kv.hash.inner, &expected);
+    testing.expectEqualSlices(u8, &kv.hash.inner, &expected.inner);
 }
 
 test "Hash" {
     const kv: Hash = KV.kvHash(testing.allocator, "key", "value");
-    var expected: [32]u8 = undefined;
-    HashFunc.hash("keyvalue", &expected);
+    const expected = Hash.init("keyvalue");
 
-    testing.expectEqualSlices(u8, kv.inner[0..], expected[0..]);
+    testing.expectEqualSlices(u8, &kv.inner, &expected.inner);
 }
 
 test "nodeHash" {

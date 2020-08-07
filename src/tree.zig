@@ -7,9 +7,7 @@ const Link = @import("link.zig").Link;
 const LinkTag = @import("link.zig").LinkTag;
 const Pruned = @import("link.zig").Pruned;
 const Stored = @import("link.zig").Stored;
-const Hash = @import("hash.zig").Hash;
-const ZeroHash = @import("hash.zig").ZeroHash;
-const HashLen = @import("hash.zig").HashLen;
+const Hash = @import("hash.zig").HashBlake2s256;
 const o = @import("ops.zig");
 const Commiter = @import("commit.zig").Commiter;
 const DB = @import("db.zig").DB;
@@ -48,7 +46,7 @@ pub const Tree = struct {
     }
 
     pub fn childHash(self: Tree, is_left: bool) Hash {
-        return if (self.link(is_left)) |l| l.hash().? else ZeroHash;
+        return if (self.link(is_left)) |l| l.hash().? else Hash.zeroHash();
     }
 
     pub fn kvHash(self: Tree) Hash {
@@ -193,15 +191,16 @@ pub const Tree = struct {
         const k = buf[ptr .. ptr + key_len];
         const v = buf[ptr + key_len .. ptr + key_len + val_len];
         var self = try Tree.init(allocator, k, v);
+        const hash_len = Hash.len();
 
-        var hash_buf = buf[ptr + key_len + val_len .. ptr + key_len + val_len + HashLen];
+        var hash_buf = buf[ptr + key_len + val_len .. ptr + key_len + val_len + hash_len];
         if ((left_flg == 0x01 and right_flg == 0x00)) {
             self.left = Link.fromMarshal(hash_buf);
         } else if ((left_flg == 0x00 and right_flg == 0x01)) {
             self.right = Link.fromMarshal(hash_buf);
         } else if ((left_flg == 0x01 and right_flg == 0x01)) {
             self.left = Link.fromMarshal(hash_buf);
-            hash_buf = buf[ptr + key_len + val_len + HashLen .. ptr + key_len + val_len + HashLen + HashLen];
+            hash_buf = buf[ptr + key_len + val_len + hash_len .. ptr + key_len + val_len + hash_len * 2];
             self.right = Link.fromMarshal(hash_buf);
         }
 
@@ -281,7 +280,7 @@ test "childHash" {
     var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{ 0, 0 } } };
     var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = left, .right = null };
     testing.expectEqualSlices(u8, &tree.childHash(true).inner, &hash.inner);
-    testing.expectEqualSlices(u8, &tree.childHash(false).inner, &ZeroHash.inner);
+    testing.expectEqualSlices(u8, &tree.childHash(false).inner, &Hash.zeroHash().inner);
 }
 
 test "height" {
