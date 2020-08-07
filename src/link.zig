@@ -1,10 +1,8 @@
 const std = @import("std");
-const warn = std.debug.warn;
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const KV = @import("kv.zig").KV;
-const h = @import("hash.zig");
-const Hash = h.Hash;
+const Hash = @import("hash.zig").Hash;
 
 pub const LinkTag = enum(u2) {
     Pruned,
@@ -118,20 +116,20 @@ pub const Stored = struct {
 };
 
 test "key" {
-  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
+  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
   testing.expectEqualSlices(u8, l.key(), "key");
 }
 
 test "tree" {
-  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
+  var tree: Tree = Tree{ .allocator = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null };
   const l: Link = Link{ .Modified =  Modified{ .child_heights = .{0, 2},  .tree = &tree } };
   var linkedTree = l.tree().?;
   testing.expectEqual(&tree, linkedTree);
 }
 
 test "hash" {
-  const kvHash = h.kvHash("key", "value");
+  const kvHash = KV.kvHash(testing.allocator, "key", "value");
   const l: Link = Link{ .Pruned =  Pruned{ .hash = kvHash, .child_heights = .{0, 2} } };
   testing.expectEqualSlices(u8, l.hash().?.inner[0..], kvHash.inner[0..]);
 }
