@@ -9,5 +9,5 @@ const t = @import("tree.zig");
 const util = @import("util.zig");
 
 test "" {
-  @import("std").meta.refAllDecls(@This());
+    @import("std").meta.refAllDecls(@This());
 }

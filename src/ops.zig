@@ -6,206 +6,206 @@ const Tree = @import("tree.zig").Tree;
 pub const OpTag = enum(u2) { Put, Del };
 
 pub const Op = struct {
-  op: OpTag,
-  key: []const u8,
-  val: []const u8,
+    op: OpTag,
+    key: []const u8,
+    val: []const u8,
 };
 
 pub fn applyTo(allocator: *Allocator, tree: ?*Tree, batch: []Op) *Tree {
-  if (tree) |t| return apply(allocator, t, batch);
-  return build(allocator, batch);
+    if (tree) |t| return apply(allocator, t, batch);
+    return build(allocator, batch);
 }
 
 pub fn build(allocator: *Allocator, batch: []Op) *Tree {
-  var mid_index: usize = batch.len / 2;
-  // TODO: return error
-  if (batch[mid_index].op == OpTag.Del) @panic("tried to delete non-existent key");
-  var mid_tree = Tree.init(allocator, batch[mid_index].key, batch[mid_index].val) catch unreachable;
-  return recurse(allocator, mid_tree, batch, mid_index, true);
+    var mid_index: usize = batch.len / 2;
+    // TODO: return error
+    if (batch[mid_index].op == OpTag.Del) @panic("tried to delete non-existent key");
+    var mid_tree = Tree.init(allocator, batch[mid_index].key, batch[mid_index].val) catch unreachable;
+    return recurse(allocator, mid_tree, batch, mid_index, true);
 }
 
 pub fn apply(allocator: *Allocator, tree: *Tree, batch: []Op) *Tree {
-  var found: bool = false;
-  var mid: usize = 0;
-  binaryBatchSearch(tree.key(), batch, &found, &mid);
+    var found: bool = false;
+    var mid: usize = 0;
+    binaryBatchSearch(tree.key(), batch, &found, &mid);
 
-  if (found) {
-    if (batch[mid].op == OpTag.Put) {
-      tree.updateVal(batch[mid].val);
-    } else if (batch[mid].op == OpTag.Del) {
-      // TODO: delete
+    if (found) {
+        if (batch[mid].op == OpTag.Put) {
+            tree.updateVal(batch[mid].val);
+        } else if (batch[mid].op == OpTag.Del) {
+            // TODO: delete
+        }
     }
-  }
 
-  return recurse(allocator, tree, batch, mid, found);
+    return recurse(allocator, tree, batch, mid, found);
 }
 
 pub fn recurse(allocator: *Allocator, tree: *Tree, batch: []Op, mid: usize, exclusive: bool) *Tree {
-  var left_batch = batch[0..mid];
-  var right_batch = if (exclusive) batch[mid + 1..] else batch[mid..];
+    var left_batch = batch[0..mid];
+    var right_batch = if (exclusive) batch[mid + 1 ..] else batch[mid..];
 
-  if (left_batch.len != 0) {
-    var detached = tree.detach(true);
-    var applied = applyTo(allocator, detached, left_batch);
-    tree.attach(true, applied);
-  }
+    if (left_batch.len != 0) {
+        var detached = tree.detach(true);
+        var applied = applyTo(allocator, detached, left_batch);
+        tree.attach(true, applied);
+    }
 
-  if (right_batch.len != 0) {
-    var detached = tree.detach(false);
-    var applied = applyTo(allocator, detached, right_batch);
-    tree.attach(false, applied);
-  }
+    if (right_batch.len != 0) {
+        var detached = tree.detach(false);
+        var applied = applyTo(allocator, detached, right_batch);
+        tree.attach(false, applied);
+    }
 
-  return balance(tree);
+    return balance(tree);
 }
 
 pub fn balance(tree: *Tree) *Tree {
-  var factor = balanceFactor(tree);
-  if (-1 <= factor and factor <= 1) return tree;
+    var factor = balanceFactor(tree);
+    if (-1 <= factor and factor <= 1) return tree;
 
-  var is_left = factor < 0;
-  var child_left = balanceFactor(tree.child(is_left)) > 0;
+    var is_left = factor < 0;
+    var child_left = balanceFactor(tree.child(is_left)) > 0;
 
-  if ((is_left and child_left) or (!is_left and !child_left)) {
-    // Note: expected to have child
-    var child = tree.detach(is_left).?;
-    var rotated = rotate(child, !is_left);
-    tree.attach(is_left, rotated);
-  }
+    if ((is_left and child_left) or (!is_left and !child_left)) {
+        // Note: expected to have child
+        var child = tree.detach(is_left).?;
+        var rotated = rotate(child, !is_left);
+        tree.attach(is_left, rotated);
+    }
 
-  return rotate(tree, is_left);
+    return rotate(tree, is_left);
 }
 
 pub fn balanceFactor(tree: ?*Tree) i16 {
-  if (tree) |t| return t.balanceFactor();
-  return 0;
+    if (tree) |t| return t.balanceFactor();
+    return 0;
 }
 
 pub fn rotate(tree: *Tree, is_left: bool) *Tree {
-  // Note: expected to have child
-  var child = tree.detach(is_left).?;
+    // Note: expected to have child
+    var child = tree.detach(is_left).?;
 
-  if (child.detach(!is_left)) |grand_child| tree.attach(is_left, grand_child);
+    if (child.detach(!is_left)) |grand_child| tree.attach(is_left, grand_child);
 
-  var balanced = balance(tree);
-  child.attach(!is_left, balanced);
+    var balanced = balance(tree);
+    child.attach(!is_left, balanced);
 
-  var balanced_child = balance(child);
-  return balanced_child;
+    var balanced_child = balance(child);
+    return balanced_child;
 }
 
 pub fn binaryBatchSearch(needle: []const u8, batch: []Op, found: *bool, index: *usize) void {
-  var low: usize = 0;
-  var high: usize = batch.len - 1;
-  while (low <= high) {
-    const median = (low + high) / 2;
-    if (std.mem.eql(u8, batch[median].key, needle)) {
-      found.* = true;
-      index.* = median;
-      return;
-    } else if (std.mem.lessThan(u8, batch[median].key, needle)) {
-      low = median + 1;
-    } else {
-      if (median == 0) break;
-      high = median - 1;
+    var low: usize = 0;
+    var high: usize = batch.len - 1;
+    while (low <= high) {
+        const median = (low + high) / 2;
+        if (std.mem.eql(u8, batch[median].key, needle)) {
+            found.* = true;
+            index.* = median;
+            return;
+        } else if (std.mem.lessThan(u8, batch[median].key, needle)) {
+            low = median + 1;
+        } else {
+            if (median == 0) break;
+            high = median - 1;
+        }
     }
-  }
 
-  found.* = false;
-  index.* = low;
-  return;
+    found.* = false;
+    index.* = low;
+    return;
 }
 
 test "apply" {
-  // insert & update case
-  var buf: [65536]u8 = undefined;
-  var buffer = std.heap.FixedBufferAllocator.init(&buf);
-  var arena = std.heap.ArenaAllocator.init(&buffer.allocator);
-  defer arena.deinit();
+    // insert & update case
+    var buf: [65536]u8 = undefined;
+    var buffer = std.heap.FixedBufferAllocator.init(&buf);
+    var arena = std.heap.ArenaAllocator.init(&buffer.allocator);
+    defer arena.deinit();
 
-  var op0 = Op{ .op = OpTag.Put, .key = "key0", .val = "value" };
-  var op1 = Op{ .op = OpTag.Put, .key = "key1", .val = "value" };
-  var op2 = Op{ .op = OpTag.Put, .key = "key2", .val = "value" };
-  var op3 = Op{ .op = OpTag.Put, .key = "key3", .val = "value" };
-  var op4 = Op{ .op = OpTag.Put, .key = "key4", .val = "value" };
-  var op5 = Op{ .op = OpTag.Put, .key = "key5", .val = "value" };
-  var op6 = Op{ .op = OpTag.Put, .key = "key6", .val = "value" };
-  var op7 = Op{ .op = OpTag.Put, .key = "key7", .val = "value" };
-  var op8 = Op{ .op = OpTag.Put, .key = "key8", .val = "value" };
-  var op9 = Op{ .op = OpTag.Put, .key = "key9", .val = "value" };
+    var op0 = Op{ .op = OpTag.Put, .key = "key0", .val = "value" };
+    var op1 = Op{ .op = OpTag.Put, .key = "key1", .val = "value" };
+    var op2 = Op{ .op = OpTag.Put, .key = "key2", .val = "value" };
+    var op3 = Op{ .op = OpTag.Put, .key = "key3", .val = "value" };
+    var op4 = Op{ .op = OpTag.Put, .key = "key4", .val = "value" };
+    var op5 = Op{ .op = OpTag.Put, .key = "key5", .val = "value" };
+    var op6 = Op{ .op = OpTag.Put, .key = "key6", .val = "value" };
+    var op7 = Op{ .op = OpTag.Put, .key = "key7", .val = "value" };
+    var op8 = Op{ .op = OpTag.Put, .key = "key8", .val = "value" };
+    var op9 = Op{ .op = OpTag.Put, .key = "key9", .val = "value" };
 
-  var batch1 = [_]Op{op3, op6, op8};
-  var tree = applyTo(arena.child_allocator, null, &batch1);
-  testing.expect(tree.verify());
-  testing.expectEqualSlices(u8, tree.key(), "key6");
-  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
-  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
+    var batch1 = [_]Op{ op3, op6, op8 };
+    var tree = applyTo(arena.child_allocator, null, &batch1);
+    testing.expect(tree.verify());
+    testing.expectEqualSlices(u8, tree.key(), "key6");
+    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
+    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
 
-  var batch2 = [_]Op{op0, op1, op2, op3, op6, op8};
-  tree = applyTo(arena.child_allocator, tree, &batch2);
-  testing.expect(tree.verify());
-  testing.expectEqualSlices(u8, tree.key(), "key3");
-  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
-  testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
-  testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
-  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
+    var batch2 = [_]Op{ op0, op1, op2, op3, op6, op8 };
+    tree = applyTo(arena.child_allocator, tree, &batch2);
+    testing.expect(tree.verify());
+    testing.expectEqualSlices(u8, tree.key(), "key3");
+    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
+    testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
+    testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
 
-  var batch3 = [_]Op{op0, op4, op5, op7, op9};
-  tree = applyTo(arena.child_allocator, tree, &batch3);
-  testing.expect(tree.verify());
-  testing.expectEqualSlices(u8, tree.key(), "key3");
-  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
-  testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
-  testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
-  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.key(), "key5");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.child(true).?.key(), "key4");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(true).?.key(), "key7");
-  testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(false).?.key(), "key9");
+    var batch3 = [_]Op{ op0, op4, op5, op7, op9 };
+    tree = applyTo(arena.child_allocator, tree, &batch3);
+    testing.expect(tree.verify());
+    testing.expectEqualSlices(u8, tree.key(), "key3");
+    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
+    testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
+    testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.key(), "key5");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.child(true).?.key(), "key4");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(true).?.key(), "key7");
+    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(false).?.key(), "key9");
 
-  // TODO: delete case
+    // TODO: delete case
 }
 
 test "build" {
-  var batch = [_]Op{
-    Op{ .op = OpTag.Put, .key = "key2", .val = "value2" },
-    Op{ .op = OpTag.Put, .key = "key3", .val = "value3" },
-    Op{ .op = OpTag.Put, .key = "key5", .val = "value5" },
-  };
+    var batch = [_]Op{
+        Op{ .op = OpTag.Put, .key = "key2", .val = "value2" },
+        Op{ .op = OpTag.Put, .key = "key3", .val = "value3" },
+        Op{ .op = OpTag.Put, .key = "key5", .val = "value5" },
+    };
 
-  var tree = build(testing.allocator, &batch);
-  testing.expectEqualSlices(u8, tree.key(), "key3");
-  testing.expectEqualSlices(u8, tree.child(true).?.key(), "key2");
-  testing.expectEqualSlices(u8, tree.child(false).?.key(), "key5");
-  defer testing.allocator.destroy(tree);
-  defer testing.allocator.destroy(tree.child(true).?);
-  defer testing.allocator.destroy(tree.child(false).?);
+    var tree = build(testing.allocator, &batch);
+    testing.expectEqualSlices(u8, tree.key(), "key3");
+    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key5");
+    defer testing.allocator.destroy(tree);
+    defer testing.allocator.destroy(tree.child(true).?);
+    defer testing.allocator.destroy(tree.child(false).?);
 }
 
 test "binaryBatchSearch" {
-  var batch = [_]Op{
-    Op{ .op = OpTag.Put, .key = "key2", .val = "value"},
-    Op{ .op = OpTag.Put, .key = "key3", .val = "value"},
-    Op{ .op = OpTag.Del, .key = "key5", .val = undefined},
-  };
+    var batch = [_]Op{
+        Op{ .op = OpTag.Put, .key = "key2", .val = "value" },
+        Op{ .op = OpTag.Put, .key = "key3", .val = "value" },
+        Op{ .op = OpTag.Del, .key = "key5", .val = undefined },
+    };
 
-  var found: bool = false;
-  var index: usize = 0;
-  binaryBatchSearch("key3", &batch, &found, &index);
-  testing.expect(found);
-  testing.expectEqual(index, 1);
-  binaryBatchSearch("key5", &batch, &found, &index);
-  testing.expect(found);
-  testing.expectEqual(index, 2);
-  binaryBatchSearch("key4", &batch, &found, &index);
-  testing.expect(!found);
-  testing.expectEqual(index, 2);
-  binaryBatchSearch("key1", &batch, &found, &index);
-  testing.expect(!found);
-  testing.expectEqual(index, 0);
-  binaryBatchSearch("key6", &batch, &found, &index);
-  testing.expect(!found);
-  testing.expectEqual(index, 3);
+    var found: bool = false;
+    var index: usize = 0;
+    binaryBatchSearch("key3", &batch, &found, &index);
+    testing.expect(found);
+    testing.expectEqual(index, 1);
+    binaryBatchSearch("key5", &batch, &found, &index);
+    testing.expect(found);
+    testing.expectEqual(index, 2);
+    binaryBatchSearch("key4", &batch, &found, &index);
+    testing.expect(!found);
+    testing.expectEqual(index, 2);
+    binaryBatchSearch("key1", &batch, &found, &index);
+    testing.expect(!found);
+    testing.expectEqual(index, 0);
+    binaryBatchSearch("key6", &batch, &found, &index);
+    testing.expect(!found);
+    testing.expectEqual(index, 3);
 }
