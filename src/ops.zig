@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
+const DB = @import("db.zig").RocksDataBbase;
 
 pub const OpTag = enum(u2) { Put, Del };
 
@@ -11,16 +12,16 @@ pub const Op = struct {
     val: []const u8,
 };
 
-pub fn applyTo(allocator: *Allocator, tree: ?*Tree, batch: []Op) *Tree {
+pub fn applyTo(allocator: *Allocator, db: *DB, tree: ?*Tree, batch: []Op) *Tree {
     if (tree) |t| return apply(allocator, t, batch);
-    return build(allocator, batch);
+    return build(allocator, db, batch);
 }
 
-pub fn build(allocator: *Allocator, batch: []Op) *Tree {
+pub fn build(allocator: *Allocator, db: *DB, batch: []Op) *Tree {
     var mid_index: usize = batch.len / 2;
     // TODO: return error
     if (batch[mid_index].op == OpTag.Del) @panic("tried to delete non-existent key");
-    var mid_tree = Tree.init(allocator, batch[mid_index].key, batch[mid_index].val) catch unreachable;
+    var mid_tree = Tree.init(allocator, db, batch[mid_index].key, batch[mid_index].val) catch unreachable;
     return recurse(allocator, mid_tree, batch, mid_index, true);
 }
 
@@ -46,13 +47,13 @@ pub fn recurse(allocator: *Allocator, tree: *Tree, batch: []Op, mid: usize, excl
 
     if (left_batch.len != 0) {
         var detached = tree.detach(true);
-        var applied = applyTo(allocator, detached, left_batch);
+        var applied = applyTo(allocator, tree.db, detached, left_batch);
         tree.attach(true, applied);
     }
 
     if (right_batch.len != 0) {
         var detached = tree.detach(false);
-        var applied = applyTo(allocator, detached, right_batch);
+        var applied = applyTo(allocator, tree.db, detached, right_batch);
         tree.attach(false, applied);
     }
 
@@ -135,14 +136,14 @@ test "apply" {
     var op9 = Op{ .op = OpTag.Put, .key = "key9", .val = "value" };
 
     var batch1 = [_]Op{ op3, op6, op8 };
-    var tree = applyTo(arena.child_allocator, null, &batch1);
+    var tree = applyTo(arena.child_allocator, undefined, null, &batch1);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key6");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
 
     var batch2 = [_]Op{ op0, op1, op2, op3, op6, op8 };
-    tree = applyTo(arena.child_allocator, tree, &batch2);
+    tree = applyTo(arena.child_allocator, undefined, tree, &batch2);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
@@ -152,7 +153,7 @@ test "apply" {
     testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
 
     var batch3 = [_]Op{ op0, op4, op5, op7, op9 };
-    tree = applyTo(arena.child_allocator, tree, &batch3);
+    tree = applyTo(arena.child_allocator, undefined, tree, &batch3);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
@@ -175,7 +176,7 @@ test "build" {
         Op{ .op = OpTag.Put, .key = "key5", .val = "value5" },
     };
 
-    var tree = build(testing.allocator, &batch);
+    var tree = build(testing.allocator, undefined, &batch);
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, tree.child(false).?.key(), "key5");

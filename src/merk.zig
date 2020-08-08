@@ -6,7 +6,7 @@ const Tree = @import("tree.zig").Tree;
 const ops = @import("ops.zig");
 const Op = ops.Op;
 const OpTag = ops.OpTag;
-const DB = @import("db.zig").DB;
+const DB = @import("db.zig").RocksDataBbase;
 const root_key = @import("db.zig").root_key;
 const Hash = @import("hash.zig").HashBlake2s256;
 const Commiter = @import("commit.zig").Commiter;
@@ -16,26 +16,27 @@ const BatchError = error{ InvalidOrder, Invalid };
 
 pub const Merk = struct {
     allocator: *Allocator,
+    db: DB,
     tree: ?*Tree = null,
 
     pub fn init(allocator: *Allocator, name: ?[]const u8) !Merk {
-        var merk: Merk = Merk{ .allocator = allocator, .tree = null };
-        try DB.open(name);
+        var db = try DB.init(name);
+        var merk: Merk = Merk{ .allocator = allocator, .db = db, .tree = null };
 
         var buf: [1024]u8 = undefined;
         var fbs = std.io.fixedBufferStream(&buf);
-        const top_key_len = try DB.read(root_key, fbs.writer());
-        if (top_key_len == 0) {
-            return merk;
-        }
+        const top_key_len = try db.read(root_key, fbs.writer());
+        if (top_key_len == 0) return merk;
 
-        var tree = Tree.fetchTrees(allocator, fbs.getWritten());
+        var tree = Tree.fetchTrees(allocator, &db, fbs.getWritten());
         merk.tree = tree;
         return merk;
     }
 
     pub fn deinit(self: Merk) void {
-        DB.close();
+        // var db = @ptrCast(*DB, &self.db);
+        self.db.deinit();
+        // db.deinit();
     }
 
     pub fn rootHash(self: *Merk) Hash {
@@ -65,32 +66,29 @@ pub const Merk = struct {
     }
 
     pub fn applyUnchecked(self: *Merk, batch: []Op) void {
-        self.tree = ops.applyTo(self.allocator, self.tree, batch);
+        self.tree = ops.applyTo(self.allocator, &self.db, self.tree, batch);
     }
 
     pub fn commit(self: *Merk) !void {
         var commiter: Commiter = undefined;
-        defer commiter.deinit();
 
         if (self.tree) |tree| {
-            commiter = try Commiter.init(self.allocator, tree.height());
+            commiter = try Commiter.init(self.allocator, &self.db, tree.height());
             tree.commit(&commiter);
-            try DB.putBatch(root_key, self.rootHash().inner[0..]);
+            commiter.put(root_key, &self.rootHash().inner);
         } else {
             // TODO: delete root key
         }
 
-        try DB.write();
+        try commiter.commit();
     }
 };
 
 test "init" {
-    var buf: [65536]u8 = undefined;
-    var buffer = heap.FixedBufferAllocator.init(&buf);
-    var arena = heap.ArenaAllocator.init(&buffer.allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var merk = try Merk.init(arena.child_allocator, "dbtest");
+    var merk = try Merk.init(&arena.allocator, "dbtest");
     defer merk.deinit();
 }
 
@@ -109,16 +107,14 @@ test "apply" {
 }
 
 test "apply and commit and fetch" {
-    var buf: [65536]u8 = undefined;
-    var buffer = heap.FixedBufferAllocator.init(&buf);
-    var arena = heap.ArenaAllocator.init(&buffer.allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var merk = try Merk.init(arena.child_allocator, "dbtest");
+    var merk = try Merk.init(&arena.allocator, "dbtest");
     defer merk.deinit();
 
     // initialize db
-    DB.destroy("dbtest");
+    merk.db.destroy("dbtest");
     merk.tree = null;
 
     // apply
@@ -154,8 +150,8 @@ test "apply and commit and fetch" {
     testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), .Pruned);
     testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), .Pruned);
 
-    var top_key = merk.rootHash().inner[0..];
-    var tree = Tree.fetchTrees(merk.allocator, top_key);
+    var top_key = merk.rootHash().inner;
+    var tree = Tree.fetchTrees(merk.allocator, &merk.db, &top_key);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(true).?.key(), "key1");
@@ -174,8 +170,7 @@ pub fn main() !void {
     var arena = heap.ArenaAllocator.init(&buffer.allocator);
     defer arena.deinit();
 
-    var merk = try Merk.init(arena.child_allocator);
+    var merk = try Merk.init(&arena.allocator);
+    defer merk.deinit();
     std.debug.print("merk.tree: {}\n", .{merk.tree});
-
-    defer DB.close();
 }
