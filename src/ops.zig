@@ -7,9 +7,20 @@ const DB = @import("db.zig").RocksDataBbase;
 pub const OpTag = enum(u2) { Put, Del };
 
 pub const Op = struct {
+    const Self = @This();
     op: OpTag,
     key: []const u8,
     val: []const u8,
+
+    pub fn init(allocator: *Allocator, tag: OpTag, key: []const u8, val: []const u8) !*Self {
+        var op = try allocator.create(Op);
+        errdefer allocator.destroy(op);
+
+        op.op = tag;
+        op.key = key;
+        op.val = val;
+        return op;
+    }
 };
 
 pub fn applyTo(allocator: *Allocator, db: *DB, tree: ?*Tree, batch: []Op) *Tree {
@@ -117,6 +128,14 @@ pub fn binaryBatchSearch(needle: []const u8, batch: []Op, found: *bool, index: *
     return;
 }
 
+pub fn sortBatch(batch: []Op) void {
+    std.sort.sort(Op, batch, {}, batchCmpLessThan);
+}
+
+fn batchCmpLessThan(context: void, a: Op, b: Op) bool {
+    return std.mem.lessThan(u8, a.key, b.key);
+}
+
 test "apply" {
     // insert & update case
     var buf: [65536]u8 = undefined;
@@ -209,4 +228,21 @@ test "binaryBatchSearch" {
     binaryBatchSearch("key6", &batch, &found, &index);
     testing.expect(!found);
     testing.expectEqual(index, 3);
+}
+
+test "sortBatch" {
+    var batch = [_]Op{
+        Op{ .op = OpTag.Put, .key = "key0", .val = "value" },
+        Op{ .op = OpTag.Put, .key = "key9", .val = "value" },
+        Op{ .op = OpTag.Put, .key = "key6", .val = "value" },
+        Op{ .op = OpTag.Put, .key = "key8", .val = "value" },
+        Op{ .op = OpTag.Put, .key = "key2", .val = "value" },
+    };
+
+    sortBatch(&batch);
+
+    var i: usize = 0;
+    while(i < batch.len - 1) : (i += 1) {
+        testing.expect(batchCmpLessThan({}, batch[i], batch[i+1]));
+    }
 }

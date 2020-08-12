@@ -1,6 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const crypto = std.crypto;
+const Allocator = std.mem.Allocator;
 
 pub const HashBlake2s256 = Hash(crypto.Blake2s256);
 
@@ -15,6 +16,13 @@ pub fn Hash(comptime T: type) type {
             return ctx;
         }
 
+        pub fn initPtr(allocator: *Allocator, key: []const u8) !*Self {
+            var ctx = try allocator.create(Self);
+            errdefer allocator.destroy(ctx);
+            T.hash(key, &ctx.inner);
+            return ctx;
+        }
+
         pub fn update(ctx: *Self, key: []const u8) void {
             T.hash(key, &ctx.inner);
         }
@@ -25,11 +33,7 @@ pub fn Hash(comptime T: type) type {
 
         pub fn zeroHash() Self {
             var ctx: Self = undefined;
-            var i: usize = 0;
-            while (i < T.digest_length) {
-                ctx.inner[i] = 0;
-                i += 1;
-            }
+            ctx.inner = [1]u8{0} ** T.digest_length;
             return ctx;
         }
     };

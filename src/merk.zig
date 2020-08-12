@@ -3,16 +3,15 @@ const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const heap = std.heap;
 const Tree = @import("tree.zig").Tree;
-const ops = @import("ops.zig");
-const Op = ops.Op;
-const OpTag = ops.OpTag;
+const o = @import("ops.zig");
+const Op = o.Op;
+const OpTag = o.OpTag;
 const DB = @import("db.zig").RocksDataBbase;
 const root_key = @import("db.zig").root_key;
 const Hash = @import("hash.zig").HashBlake2s256;
 const Commiter = @import("commit.zig").Commiter;
 const LinkTag = @import("link.zig").LinkTag;
-
-const BatchError = error{ InvalidOrder, Invalid };
+const U = @import("util.zig");
 
 pub const Merk = struct {
     allocator: *Allocator,
@@ -53,10 +52,10 @@ pub const Merk = struct {
         for (batch) |op| {
             if (std.mem.lessThan(u8, op.key, pre_key)) {
                 std.debug.print("keys in batch must be sorted\n", .{});
-                return BatchError.InvalidOrder;
+                return error.InvalidOrder;
             } else if (std.mem.eql(u8, op.key, pre_key)) {
                 std.debug.print("keys in batch must be unique, {}\n", .{op.key});
-                return BatchError.Invalid;
+                return error.Invalid;
             }
 
             pre_key = op.key;
@@ -66,7 +65,7 @@ pub const Merk = struct {
     }
 
     pub fn applyUnchecked(self: *Merk, batch: []Op) void {
-        self.tree = ops.applyTo(self.allocator, &self.db, self.tree, batch);
+        self.tree = o.applyTo(self.allocator, &self.db, self.tree, batch);
     }
 
     pub fn commit(self: *Merk) !void {
@@ -84,6 +83,48 @@ pub const Merk = struct {
     }
 };
 
+fn buildBatch(allocator: *Allocator, ops: []Op, loop: usize) !void {
+    var i: usize = 0;
+    var buffer: [100]u8 = undefined;
+    while(i < loop) : (i += 1) {
+        const key = try Hash.initPtr(allocator, U.intToString(&buffer, @as(u64, i)));
+        var buf: [512]u8 = undefined;
+        const val_slice = buf[0..U.randRepeatString(&buf, 98, 512, u9, @as(u64, i))];
+        var val = try allocator.alloc(u8, val_slice.len);
+        std.mem.copy(u8, val, val_slice);
+        ops[i] = Op{ .op = OpTag.Put, .key = &key.inner, .val = val };
+    }
+}
+
+// NOTE: error happen -> (error - detected leaked allocations without matching free: 2)
+test "benchmark: add and put with no commit" {
+    // var batch_buf: [10_000_000]u8 = undefined;
+    // var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
+    // var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+    // defer batch_arena.deinit();
+
+    // const loop: usize = 10_000;
+    // var ops: [loop]Op = undefined;
+    // try buildBatch(&batch_arena.allocator, &ops, loop);
+
+    // o.sortBatch(&ops);
+
+    // var merk_buf: [7_000_000]u8 = undefined;
+    // var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
+    // var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+    // defer merk_arena.deinit();
+
+    // var merk = try Merk.init(&merk_arena.allocator, "dbtest");
+    // defer merk.deinit();
+
+    // // initialize db
+    // merk.db.destroy("dbtest");
+    // merk.tree = null;
+
+    // try merk.apply(&ops);
+    // testing.expect(merk.tree.?.verify());
+}
+
 test "init" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -100,10 +141,10 @@ test "apply" {
     var op2 = Op{ .op = OpTag.Put, .key = "key2", .val = "value" };
 
     var batch1 = [_]Op{ op0, op2, op1 };
-    testing.expectError(BatchError.InvalidOrder, merk.apply(&batch1));
+    testing.expectError(error.InvalidOrder, merk.apply(&batch1));
 
     var batch2 = [_]Op{ op0, op2, op2 };
-    testing.expectError(BatchError.Invalid, merk.apply(&batch2));
+    testing.expectError(error.Invalid, merk.apply(&batch2));
 }
 
 test "apply and commit and fetch" {
@@ -162,6 +203,8 @@ test "apply and commit and fetch" {
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(true).?.key(), "key7");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(true).?.child(true).?.key(), "key6");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(false).?.key(), "key9");
+
+
 }
 
 pub fn main() !void {

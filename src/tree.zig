@@ -21,7 +21,7 @@ pub const Tree = struct {
 
     pub fn init(allocator: *Allocator, db: *DB, k: []const u8, v: []const u8) !*Tree {
         var tree = try allocator.create(Tree);
-        errdefer tree;
+        errdefer allocator.destroy(tree);
 
         tree.allocator = allocator;
         tree.db = db;
