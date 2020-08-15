@@ -35,7 +35,7 @@ pub const Commiter = struct {
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();
 
-        self.db.put(&tree.hash().inner, buf.toOwnedSlice());
+        self.db.put(tree.key(), buf.toOwnedSlice());
     }
 
     pub fn commit(self: *Commiter) !void {
@@ -55,10 +55,11 @@ test "write" {
     defer arena.deinit();
 
     var commiter = try Commiter.init(&arena.allocator, &db, 1);
-
     var tree = try Tree.init(&arena.allocator, &db, "key", "value");
-
     commiter.write(tree);
-
     try commiter.commit();
+    var feched = Tree.fetchTree(&arena.allocator, &db, tree.key());
+
+    testing.expectEqualSlices(u8, tree.key(), feched.key());
+    testing.expectEqualSlices(u8, tree.value(), feched.value());
 }

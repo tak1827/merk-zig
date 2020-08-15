@@ -33,9 +33,7 @@ pub const Merk = struct {
     }
 
     pub fn deinit(self: Merk) void {
-        // var db = @ptrCast(*DB, &self.db);
         self.db.deinit();
-        // db.deinit();
     }
 
     pub fn rootHash(self: *Merk) Hash {
@@ -49,7 +47,10 @@ pub const Merk = struct {
     pub fn apply(self: *Merk, batch: []Op) !void {
         var pre_key: []const u8 = "";
 
+        if (batch.len > o.BatcSizeLimit) return error.ExceedBatchSizeLimit;
+
         for (batch) |op| {
+            if (op.val.len > o.BatchValueLimit) return error.ExeceedBatchValueLimit;
             if (std.mem.lessThan(u8, op.key, pre_key)) {
                 std.debug.print("keys in batch must be sorted\n", .{});
                 return error.InvalidOrder;
@@ -61,11 +62,11 @@ pub const Merk = struct {
             pre_key = op.key;
         }
 
-        self.applyUnchecked(batch);
+        try self.applyUnchecked(batch);
     }
 
-    pub fn applyUnchecked(self: *Merk, batch: []Op) void {
-        self.tree = o.applyTo(self.allocator, &self.db, self.tree, batch);
+    pub fn applyUnchecked(self: *Merk, batch: []Op) !void {
+        self.tree = try o.applyTo(self.allocator, &self.db, self.tree, batch);
     }
 
     pub fn commit(self: *Merk) !void {
@@ -74,12 +75,20 @@ pub const Merk = struct {
         if (self.tree) |tree| {
             commiter = try Commiter.init(self.allocator, &self.db, tree.height());
             tree.commit(&commiter);
-            commiter.put(root_key, &self.rootHash().inner);
+            commiter.put(root_key, tree.key());
         } else {
             // TODO: delete root key
         }
 
         try commiter.commit();
+    }
+
+    pub fn get(self: *Merk, output: []u8, key: []const u8) usize {
+        var tree = Tree.fetchTree(self.allocator, &self.db, key);
+        self.allocator.destroy(tree);
+        var val = tree.value();
+        std.mem.copy(u8, output, val);
+        return val.len;
     }
 };
 
@@ -191,20 +200,26 @@ test "apply and commit and fetch" {
     testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), .Pruned);
     testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), .Pruned);
 
-    var top_key = merk.rootHash().inner;
-    var tree = Tree.fetchTrees(merk.allocator, &merk.db, &top_key);
+    // fetch
+    var top_key = merk.tree.?.key();
+    var tree = Tree.fetchTrees(merk.allocator, &merk.db, top_key);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
+    testing.expectEqualSlices(u8, merk.tree.?.child(true).?.value(), "value2");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(true).?.key(), "key1");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(false).?.key(), "key4");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(false).?.child(true).?.key(), "key3");
+    testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(false).?.child(true).?.value(), "value3");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.child(true).?.child(true).?.key(), "key0");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.key(), "key8");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(true).?.key(), "key7");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(true).?.child(true).?.key(), "key6");
     testing.expectEqualSlices(u8, merk.tree.?.child(false).?.child(false).?.key(), "key9");
 
-
+    // get
+    var output: [1024]u8 = undefined;
+    var size = merk.get(&output, "key0");
+    testing.expectEqualSlices(u8, output[0..size], "value0");
 }
 
 pub fn main() !void {

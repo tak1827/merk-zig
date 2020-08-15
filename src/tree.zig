@@ -70,7 +70,7 @@ pub const Tree = struct {
     pub fn child(self: Tree, is_left: bool) ?*Tree {
         if (self.link(is_left)) |l| {
             if (@as(LinkTag, l) == .Pruned)
-                return Tree.fetchTree(self.allocator, self.db, &l.hash().?.inner);
+                return Tree.fetchTree(self.allocator, self.db, l.key());
             return l.tree();
         }
         return null;
@@ -102,8 +102,7 @@ pub const Tree = struct {
             self.setLink(is_left, null);
 
             if (@as(LinkTag, slot) == .Pruned) {
-                var _h = slot.hash().?.inner;
-                var _child = Tree.fetchTree(self.allocator, self.db, &_h);
+                var _child = Tree.fetchTree(self.allocator, self.db, slot.key());
                 return _child;
             }
 
@@ -147,14 +146,12 @@ pub const Tree = struct {
         const self = Tree.fetchTree(allocator, db, k);
 
         if (self.link(true)) |l| {
-            var _h = l.hash().?.inner;
-            var t = Tree.fetchTrees(allocator, db, &_h);
+            var t = Tree.fetchTrees(allocator, db, l.key());
             self.setLink(true, l.intoStored(t));
         }
 
         if (self.link(false)) |l| {
-            var _h = l.hash().?.inner;
-            var t = Tree.fetchTrees(allocator, db, &_h);
+            var t = Tree.fetchTrees(allocator, db, l.key());
             self.setLink(false, l.intoStored(t));
         }
 
@@ -164,47 +161,75 @@ pub const Tree = struct {
     pub inline fn marshal(self: *Tree, w: anytype) !void {
         @setRuntimeSafety(false);
         try w.writeIntBig(u32, @truncate(u32, self.key().len));
-        try w.writeIntBig(u32, @truncate(u32, self.value().len));
-        if (self.link(true)) |l| try w.writeByte(0x01) else try w.writeByte(0x00);
-        if (self.link(false)) |l| try w.writeByte(0x01) else try w.writeByte(0x00);
         try w.writeAll(self.key());
+        try w.writeIntBig(u32, @truncate(u32, self.value().len));
         try w.writeAll(self.value());
-        if (self.link(true)) |l| try w.writeAll(&l.hash().?.inner);
-        if (self.link(false)) |l| try w.writeAll(&l.hash().?.inner);
+        if (self.link(true)) |l| {
+            try w.writeByte(0x01);
+            try w.writeAll(&l.hash().?.inner);
+            try w.writeIntBig(u32, @truncate(u32, l.key().len));
+            try w.writeAll(l.key());
+        } else {
+            try w.writeByte(0x00);
+        }
+        if (self.link(false)) |l| {
+            try w.writeByte(0x01);
+            try w.writeAll(&l.hash().?.inner);
+            try w.writeIntBig(u32, @truncate(u32, l.key().len));
+            try w.writeAll(l.key());
+        } else {
+            try w.writeByte(0x00);
+        }
     }
 
     pub fn unmarshal(allocator: *Allocator, db: *DB, buf: []const u8) !*Tree {
         @setRuntimeSafety(false);
-        comptime var ptr = 0;
-        if (ptr + 4 + 4 + 1 + 1 > buf.len) return error.EndOfFile;
-        const key_len = mem.readIntBig(u32, mem.asBytes(buf[ptr .. ptr + 4]));
-        ptr += 4;
-        const val_len = mem.readIntBig(u32, mem.asBytes(buf[ptr .. ptr + 4]));
-        ptr += 4;
-        const left_flg = buf[ptr];
-        ptr += 1;
-        const right_flg = buf[ptr];
-        ptr += 1;
-
-        var total: usize = 4 + 4 + 1 + 1 + key_len + val_len;
-        if (left_flg == 0x01) total += 32;
-        if (right_flg == 0x01) total += 32;
-        if (buf.len != total) return error.EndOfFile;
-
-        const k = buf[ptr .. ptr + key_len];
-        const v = buf[ptr + key_len .. ptr + key_len + val_len];
-        var self = try Tree.init(allocator, db, k, v);
+        var ptr: usize = 0;
+        var bytes: [4]u8 = undefined;
         const hash_len = Hash.len();
 
-        var hash_buf = buf[ptr + key_len + val_len .. ptr + key_len + val_len + hash_len];
-        if ((left_flg == 0x01 and right_flg == 0x00)) {
-            self.left = Link.fromMarshal(hash_buf);
-        } else if ((left_flg == 0x00 and right_flg == 0x01)) {
-            self.right = Link.fromMarshal(hash_buf);
-        } else if ((left_flg == 0x01 and right_flg == 0x01)) {
-            self.left = Link.fromMarshal(hash_buf);
-            hash_buf = buf[ptr + key_len + val_len + hash_len .. ptr + key_len + val_len + hash_len * 2];
-            self.right = Link.fromMarshal(hash_buf);
+        if (ptr + 4 + 4 + 1 + 1 > buf.len) return error.EndOfFile;
+
+        // key
+        mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+        ptr += 4;
+        const key_len = mem.readIntBig(u32, &bytes);
+        const k = buf[ptr..ptr+key_len];
+        ptr += key_len;
+        // val
+        mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+        ptr += 4;
+        const val_len = mem.readIntBig(u32, &bytes);
+        const v = buf[ptr..ptr+val_len];
+        ptr += val_len;
+
+        var self = try Tree.init(allocator, db, k, v);
+
+        // left
+        const left_flg = buf[ptr];
+        ptr += 1;
+        if (left_flg == 0x01) {
+            const hash_buf = buf[ptr..ptr+hash_len];
+            ptr += hash_len;
+            mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+            ptr += 4;
+            const val_left_len = mem.readIntBig(u32, &bytes);
+            const val_left = buf[ptr..ptr+val_left_len];
+            ptr += val_left_len;
+            self.left = Link.fromMarshal(hash_buf, val_left);
+        }
+        // right
+        const right_flg = buf[ptr];
+        ptr += 1;
+        if (right_flg == 0x01) {
+            const hash_buf = buf[ptr..ptr+hash_len];
+            ptr += hash_len;
+            mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+            ptr += 4;
+            const val_right_len = mem.readIntBig(u32, &bytes);
+            const val_right = buf[ptr..ptr+val_right_len];
+            ptr += val_right_len;
+            self.right = Link.fromMarshal(hash_buf, val_right);
         }
 
         return self;
@@ -231,8 +256,10 @@ test "marshal and unmarshal" {
     // marshal
     var hash_l = KV.kvHash(testing.allocator, "leftkey", "leftvalue");
     var hash_r = KV.kvHash(testing.allocator, "rightkey", "rightvalue");
-    var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = undefined } };
-    var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = undefined } };
+    var tree_l = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "keylefttree", "value"), .left = undefined, .right = undefined };
+    var tree_r = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "keyrighttree", "value"), .left = undefined, .right = undefined };
+    var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = &tree_l } };
+    var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = &tree_r } };
     var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = left, .right = right };
     var buf: [255]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
@@ -245,8 +272,11 @@ test "marshal and unmarshal" {
 
     testing.expectEqualSlices(u8, unmarshaled.key(), "key");
     testing.expectEqualSlices(u8, unmarshaled.value(), "value");
-    testing.expectEqualSlices(u8, unmarshaled.link(true).?.hash().?.inner[0..], hash_l.inner[0..]);
+    testing.expectEqualSlices(u8, unmarshaled.link(true).?.hash().?.inner[0..], &hash_l.inner);
+    testing.expectEqualSlices(u8, unmarshaled.link(true).?.key(), tree_l.key());
     testing.expectEqualSlices(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]);
+    testing.expectEqualSlices(u8, unmarshaled.link(false).?.key(), tree_r.key());
+
 }
 
 test "detach" {
@@ -280,14 +310,14 @@ test "value" {
 
 test "childHash" {
     var hash = KV.kvHash(testing.allocator, "key", "value");
-    var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{ 0, 0 } } };
+    var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{ 0, 0 }, .key = undefined } };
     var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = left, .right = null };
     testing.expectEqualSlices(u8, &tree.childHash(true).inner, &hash.inner);
     testing.expectEqualSlices(u8, &tree.childHash(false).inner, &Hash.zeroHash().inner);
 }
 
 test "height" {
-    var left: Link = Link{ .Pruned = Pruned{ .hash = undefined, .child_heights = .{ 0, 2 } } };
+    var left: Link = Link{ .Pruned = Pruned{ .hash = undefined, .child_heights = .{ 0, 2 }, .key = undefined } };
     testing.expectEqual(Tree.height(Tree{ .allocator = undefined, .db = undefined, .kv = undefined, .left = left, .right = null }), 4);
 }
 

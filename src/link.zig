@@ -17,7 +17,7 @@ pub const Link = union(LinkTag) {
 
     pub fn key(self: Link) []const u8 {
         return switch (self) {
-            .Pruned => undefined,
+            .Pruned => self.Pruned.key,
             .Modified => self.Modified.tree.key(),
             .Stored => self.Stored.tree.key(),
         };
@@ -67,10 +67,11 @@ pub const Link = union(LinkTag) {
         return Link{ .Modified = Modified{ .child_heights = t.childHeights(), .tree = t } };
     }
 
-    pub fn fromMarshal(buf: []const u8) Link {
+    pub fn fromMarshal(hash_buf: []const u8, key_buf: []const u8) Link {
         var _h: Hash = undefined;
-        std.mem.copy(u8, &_h.inner, buf);
-        return Link{ .Pruned = Pruned{ .hash = _h, .child_heights = [2]u8{ 0, 0 } } };
+        std.mem.copy(u8, &_h.inner, hash_buf);
+        // TODO: key might be needed allocation
+        return Link{ .Pruned = Pruned{ .hash = _h, .child_heights = [2]u8{ 0, 0 }, .key = key_buf } };
     }
 
     pub fn intoStored(self: Link, t: *Tree) Link {
@@ -97,7 +98,7 @@ pub const Link = union(LinkTag) {
         return switch (self) {
             .Pruned => @panic("should be stored link"),
             .Modified => @panic("should be stored link"),
-            .Stored => Link{ .Pruned = Pruned{ .hash = self.hash().?, .child_heights = self.childHeights() } },
+            .Stored => Link{ .Pruned = Pruned{ .hash = self.hash().?, .child_heights = self.childHeights(), .key = self.key() } },
         };
     }
 };
@@ -105,7 +106,7 @@ pub const Link = union(LinkTag) {
 pub const Pruned = struct {
     hash: Hash,
     child_heights: [2]u8, // [left, right]
-    // key: []const u8,
+    key: []const u8,
 };
 
 pub const Modified = struct {
@@ -134,7 +135,7 @@ test "tree" {
 
 test "hash" {
     const kvHash = KV.kvHash(testing.allocator, "key", "value");
-    const l: Link = Link{ .Pruned = Pruned{ .hash = kvHash, .child_heights = .{ 0, 2 } } };
+    const l: Link = Link{ .Pruned = Pruned{ .hash = kvHash, .child_heights = .{ 0, 2 }, .key = undefined } };
     testing.expectEqualSlices(u8, l.hash().?.inner[0..], kvHash.inner[0..]);
 }
 
