@@ -120,20 +120,20 @@ pub const Stored = struct {
 };
 
 test "key" {
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null };
+    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
     const l: Link = Link{ .Modified = Modified{ .child_heights = .{ 0, 2 }, .tree = &tree } };
     testing.expectEqualSlices(u8, l.key(), "key");
 }
 
 test "tree" {
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null };
+    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
     const l: Link = Link{ .Modified = Modified{ .child_heights = .{ 0, 2 }, .tree = &tree } };
     var linkedTree = l.tree().?;
     testing.expectEqual(&tree, linkedTree);
 }
 
 test "hash" {
-    const kvHash = KV.kvHash(testing.allocator, "key", "value");
+    const kvHash = KV.kvHash("key", "value");
     const l: Link = Link{ .Pruned = Pruned{ .hash = kvHash, .child_heights = .{ 0, 2 }, .key = undefined } };
     testing.expectEqualSlices(u8, l.hash().?.inner[0..], kvHash.inner[0..]);
 }

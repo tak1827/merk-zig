@@ -27,9 +27,7 @@ pub const Merk = struct {
         const top_key_len = try db.read(root_key, fbs.writer());
         if (top_key_len == 0) return merk;
 
-        // Note: just fetch one tree
-        var tree = Tree.fetchTrees(allocator, &db, fbs.getWritten());
-        // var tree = Tree.fetchTree(allocator, &db, fbs.getWritten());
+        var tree = Tree.fetchTrees(allocator, &db, fbs.getWritten(), Commiter.DafaultLevels);
         merk.tree = tree;
         return merk;
     }
@@ -114,98 +112,39 @@ fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
     }
 }
 
-test "benchmark: add and put with no commit" {
-    var batch_buf: [5_000_000]u8 = undefined;
-    var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
-    var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
-    // var batch_arena = heap.ArenaAllocator.init(testing.allocator);
-    // defer batch_arena.deinit();
-
-    const loop: usize = 1_000;
-    var ops: [loop]Op = undefined;
-    try buildBatch(&batch_arena.allocator, &ops, loop);
-    o.sortBatch(&ops);
-
-    var tmp_key: [32]u8 = undefined;
-    std.mem.copy(u8, &tmp_key, ops[0].key);
-
-
-    var merk_buf: [5_000_000]u8 = undefined;
-    var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
-    var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
-    // var merk_arena = heap.ArenaAllocator.init(testing.allocator);
-    // defer merk_arena.deinit();
-
-    var merk = try Merk.init(&merk_arena.allocator, "dbtest");
-    // defer merk.deinit();
-    // defer merk.db.destroy("dbtest");
-
-    merk.tree = null;
-
-    try merk.apply(&ops);
-    testing.expect(merk.tree.?.verify());
-
-    try merk.commit();
-    testing.expect(merk.tree.?.verify());
-
-    // merk.db.destroy("dbtest");
-    merk.deinit();
-    merk_arena.deinit();
-    batch_arena.deinit();
-
-    batch_arena = heap.ArenaAllocator.init(testing.allocator);
-    try buildBatch(&batch_arena.allocator, &ops, loop);
-    o.sortBatch(&ops);
-    merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
-    merk = try Merk.init(&merk_arena.allocator, "dbtest");
-
-    try merk.apply(&ops);
-    testing.expect(merk.tree.?.verify());
-
-    try merk.commit();
-    testing.expect(merk.tree.?.verify());
-
-    var output: [1024]u8 = undefined;
-    var size = merk.get(&output, &tmp_key);
-    std.debug.print("output: {}\n", .{output[0..size]});
-
-    merk.db.destroy("dbtest");
-    merk.deinit();
-    merk_arena.deinit();
-    batch_arena.deinit();
-}
-
-
 // test "benchmark: add and put with no commit" {
 //     var batch_buf: [7_000_000]u8 = undefined;
 //     var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
-//     var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
-//     defer batch_arena.deinit();
 
-//     const loop: usize = 2_000;
-//     var ops: [loop]Op = undefined;
-//     try buildBatch(&batch_arena.allocator, &ops, loop);
-
-//     o.sortBatch(&ops);
-
-//     // var merk_buf: [100_000]u8 = undefined;
 //     var merk_buf: [7_000_000]u8 = undefined;
 //     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
-//     var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
-//     defer merk_arena.deinit();
 
-//     var merk = try Merk.init(&merk_arena.allocator, "dbtest");
-//     defer merk.deinit();
+//     const loop: usize = 10_000;
+//     var ops: [loop]Op = undefined;
 
-//     // initialize db
-//     merk.db.destroy("dbtest");
-//     merk.tree = null;
+//     var i: usize = 0;
+//     while(i < 10) : (i += 1) {
+//         std.debug.print("counter: {}\n", .{i});
+//         var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+//         try buildBatch(&batch_arena.allocator, &ops, loop);
+//         o.sortBatch(&ops);
 
-//     try merk.apply(&ops);
-//     testing.expect(merk.tree.?.verify());
+//         var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+//         var merk = try Merk.init(&merk_arena.allocator, "dbtest");
 
-//     try merk.commit();
-//     testing.expect(merk.tree.?.verify());
+//         // initialize
+//         if (i == 0) merk.tree = null;
+
+//         try merk.apply(&ops);
+//         testing.expect(merk.tree.?.verify());
+
+//         try merk.commit();
+//         testing.expect(merk.tree.?.verify());
+
+//         merk.deinit();
+//         merk_arena.deinit();
+//         batch_arena.deinit();
+//     }
 // }
 
 test "init" {
@@ -275,7 +214,7 @@ test "apply and commit and fetch" {
 
     // fetch
     var top_key = merk.tree.?.key();
-    var tree = Tree.fetchTrees(merk.allocator, &merk.db, top_key);
+    var tree = Tree.fetchTrees(merk.allocator, &merk.db, top_key, Commiter.DafaultLevels);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.value(), "value2");

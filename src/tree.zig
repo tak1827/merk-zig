@@ -25,7 +25,7 @@ pub const Tree = struct {
 
         tree.allocator = allocator;
         tree.db = db;
-        tree.kv = KV.init(allocator, k, v);
+        tree.kv = KV.init(k, v);
         tree.left = null;
         tree.right = null;
         return tree;
@@ -40,11 +40,11 @@ pub const Tree = struct {
     }
 
     pub fn updateVal(self: *Tree, val: []const u8) void {
-        self.kv.hash = KV.kvHash(self.allocator, self.kv.key, self.kv.val);
+        self.kv.hash = KV.kvHash(self.kv.key, self.kv.val);
     }
 
     pub fn hash(self: Tree) Hash {
-        return KV.nodeHash(self.allocator, self.kvHash(), self.childHash(true), self.childHash(false));
+        return KV.nodeHash(self.kvHash(), self.childHash(true), self.childHash(false));
     }
 
     pub fn childHash(self: Tree, is_left: bool) Hash {
@@ -141,24 +141,27 @@ pub const Tree = struct {
     }
 
     pub fn fetchTree(allocator: *Allocator, db: *DB, k: []const u8) *Tree {
-        var buf = std.ArrayList(u8).init(allocator);
+        const alloc = std.heap.page_allocator;
+        var buf = std.ArrayList(u8).init(alloc);
         _ = db.read(k, buf.writer()) catch unreachable;
         defer buf.deinit();
 
         return Tree.unmarshal(allocator, db, buf.toOwnedSlice()) catch unreachable;
     }
 
-    pub fn fetchTrees(allocator: *Allocator, db: *DB, k: []const u8) *Tree {
+    pub fn fetchTrees(allocator: *Allocator, db: *DB, k: []const u8, level: u8) *Tree {
         const self = Tree.fetchTree(allocator, db, k);
 
-        if (self.link(true)) |l| {
-            var t = Tree.fetchTrees(allocator, db, l.key());
-            self.setLink(true, l.intoStored(t));
-        }
+        if (level > 0) {
+            if (self.link(true)) |l| {
+                var t = Tree.fetchTrees(allocator, db, l.key(), level - 1);
+                self.setLink(true, l.intoStored(t));
+            }
 
-        if (self.link(false)) |l| {
-            var t = Tree.fetchTrees(allocator, db, l.key());
-            self.setLink(false, l.intoStored(t));
+            if (self.link(false)) |l| {
+                var t = Tree.fetchTrees(allocator, db, l.key(), level - 1);
+                self.setLink(false, l.intoStored(t));
+            }
         }
 
         return self;
@@ -260,13 +263,13 @@ pub const Tree = struct {
 
 test "marshal and unmarshal" {
     // marshal
-    var hash_l = KV.kvHash(testing.allocator, "leftkey", "leftvalue");
-    var hash_r = KV.kvHash(testing.allocator, "rightkey", "rightvalue");
-    var tree_l = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "keylefttree", "value"), .left = undefined, .right = undefined };
-    var tree_r = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "keyrighttree", "value"), .left = undefined, .right = undefined };
+    var hash_l = KV.kvHash("leftkey", "leftvalue");
+    var hash_r = KV.kvHash("rightkey", "rightvalue");
+    var tree_l = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("keylefttree", "value"), .left = undefined, .right = undefined };
+    var tree_r = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("keyrighttree", "value"), .left = undefined, .right = undefined };
     var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = &tree_l } };
     var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = &tree_r } };
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = left, .right = right };
+    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = left, .right = right };
     var buf: [255]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     try tree.marshal(fbs.writer());
@@ -307,17 +310,17 @@ test "init" {
 }
 
 test "key" {
-    testing.expectEqualSlices(u8, Tree.key(Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null }), "key");
+    testing.expectEqualSlices(u8, Tree.key(Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null }), "key");
 }
 
 test "value" {
-    testing.expectEqualSlices(u8, Tree.value(Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = null, .right = null }), "value");
+    testing.expectEqualSlices(u8, Tree.value(Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null }), "value");
 }
 
 test "childHash" {
-    var hash = KV.kvHash(testing.allocator, "key", "value");
+    var hash = KV.kvHash("key", "value");
     var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{ 0, 0 }, .key = undefined } };
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init(testing.allocator, "key", "value"), .left = left, .right = null };
+    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = left, .right = null };
     testing.expectEqualSlices(u8, &tree.childHash(true).inner, &hash.inner);
     testing.expectEqualSlices(u8, &tree.childHash(false).inner, &Hash.zeroHash().inner);
 }

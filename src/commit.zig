@@ -14,7 +14,8 @@ pub const Commiter = struct {
     height: u8,
     levels: u8,
 
-    const DafaultLevels: u8 = 1;
+    // TODO: change as config
+    pub const DafaultLevels: u8 = 1;
 
     // TODO: pass level as arguments
     pub fn init(allocator: *Allocator, db: *DB, height: u8) !Commiter {
@@ -31,7 +32,8 @@ pub const Commiter = struct {
     }
 
     pub fn write(self: *Commiter, tree: *Tree) void {
-        var buf = std.ArrayList(u8).init(self.allocator);
+        const allocator = std.heap.page_allocator;
+        var buf = std.ArrayList(u8).init(allocator);
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();
 
