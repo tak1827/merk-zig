@@ -50,6 +50,7 @@ pub const Commiter = struct {
 test "write" {
     var db = try DB.init("dbtest");
     defer db.deinit();
+    defer db.destroy("dbtest");
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

@@ -124,8 +124,7 @@ pub const RocksDB = struct {
 test "init" {
     var db = try DB(RocksDB).init("dbtest");
     defer db.deinit();
-
-    db.destroy("dbtest");
+    defer db.destroy("dbtest");
 
     var key = "testkey";
     var value = "testvalue";

@@ -22,12 +22,14 @@ pub const Merk = struct {
         var db = try DB.init(name);
         var merk: Merk = Merk{ .allocator = allocator, .db = db, .tree = null };
 
-        var buf: [1024]u8 = undefined;
+        var buf: [o.BatchKeyLimit]u8 = undefined;
         var fbs = std.io.fixedBufferStream(&buf);
         const top_key_len = try db.read(root_key, fbs.writer());
         if (top_key_len == 0) return merk;
 
+        // Note: just fetch one tree
         var tree = Tree.fetchTrees(allocator, &db, fbs.getWritten());
+        // var tree = Tree.fetchTree(allocator, &db, fbs.getWritten());
         merk.tree = tree;
         return merk;
     }
@@ -92,47 +94,119 @@ pub const Merk = struct {
     }
 };
 
-fn buildBatch(allocator: *Allocator, ops: []Op, loop: usize) !void {
+fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
     var i: usize = 0;
     var buffer: [100]u8 = undefined;
     while(i < loop) : (i += 1) {
-        const key = try Hash.initPtr(allocator, U.intToString(&buffer, @as(u64, i)));
-        var buf: [512]u8 = undefined;
-        const val_slice = buf[0..U.randRepeatString(&buf, 98, 512, u9, @as(u64, i))];
-        var val = try allocator.alloc(u8, val_slice.len);
-        std.mem.copy(u8, val, val_slice);
-        ops[i] = Op{ .op = OpTag.Put, .key = &key.inner, .val = val };
+        // key
+        const key = Hash.init(U.intToString(&buffer, @as(u64, i)));
+        var key_buf = try std.ArrayList(u8).initCapacity(allocator, key.inner.len);
+        defer key_buf.deinit();
+        try key_buf.appendSlice(&key.inner);
+        // val
+        var buf: [255]u8 = undefined;
+        const val = buf[0..U.randRepeatString(&buf, 98, 255, u8, @as(u64, i))];
+        var val_buf = try std.ArrayList(u8).initCapacity(allocator, val.len);
+        defer val_buf.deinit();
+        try val_buf.appendSlice(val);
+
+        ops[i] = Op{ .op = OpTag.Put, .key = key_buf.toOwnedSlice(), .val = val_buf.toOwnedSlice() };
     }
 }
 
-// NOTE: error happen -> (error - detected leaked allocations without matching free: 2)
 test "benchmark: add and put with no commit" {
-    // var batch_buf: [10_000_000]u8 = undefined;
-    // var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
-    // var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+    var batch_buf: [5_000_000]u8 = undefined;
+    var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
+    var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+    // var batch_arena = heap.ArenaAllocator.init(testing.allocator);
     // defer batch_arena.deinit();
 
-    // const loop: usize = 10_000;
-    // var ops: [loop]Op = undefined;
-    // try buildBatch(&batch_arena.allocator, &ops, loop);
+    const loop: usize = 1_000;
+    var ops: [loop]Op = undefined;
+    try buildBatch(&batch_arena.allocator, &ops, loop);
+    o.sortBatch(&ops);
 
-    // o.sortBatch(&ops);
+    var tmp_key: [32]u8 = undefined;
+    std.mem.copy(u8, &tmp_key, ops[0].key);
 
-    // var merk_buf: [7_000_000]u8 = undefined;
-    // var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
-    // var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+
+    var merk_buf: [5_000_000]u8 = undefined;
+    var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
+    var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+    // var merk_arena = heap.ArenaAllocator.init(testing.allocator);
     // defer merk_arena.deinit();
 
-    // var merk = try Merk.init(&merk_arena.allocator, "dbtest");
+    var merk = try Merk.init(&merk_arena.allocator, "dbtest");
     // defer merk.deinit();
+    // defer merk.db.destroy("dbtest");
 
-    // // initialize db
+    merk.tree = null;
+
+    try merk.apply(&ops);
+    testing.expect(merk.tree.?.verify());
+
+    try merk.commit();
+    testing.expect(merk.tree.?.verify());
+
     // merk.db.destroy("dbtest");
-    // merk.tree = null;
+    merk.deinit();
+    merk_arena.deinit();
+    batch_arena.deinit();
 
-    // try merk.apply(&ops);
-    // testing.expect(merk.tree.?.verify());
+    batch_arena = heap.ArenaAllocator.init(testing.allocator);
+    try buildBatch(&batch_arena.allocator, &ops, loop);
+    o.sortBatch(&ops);
+    merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+    merk = try Merk.init(&merk_arena.allocator, "dbtest");
+
+    try merk.apply(&ops);
+    testing.expect(merk.tree.?.verify());
+
+    try merk.commit();
+    testing.expect(merk.tree.?.verify());
+
+    var output: [1024]u8 = undefined;
+    var size = merk.get(&output, &tmp_key);
+    std.debug.print("output: {}\n", .{output[0..size]});
+
+    merk.db.destroy("dbtest");
+    merk.deinit();
+    merk_arena.deinit();
+    batch_arena.deinit();
 }
+
+
+// test "benchmark: add and put with no commit" {
+//     var batch_buf: [7_000_000]u8 = undefined;
+//     var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
+//     var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+//     defer batch_arena.deinit();
+
+//     const loop: usize = 2_000;
+//     var ops: [loop]Op = undefined;
+//     try buildBatch(&batch_arena.allocator, &ops, loop);
+
+//     o.sortBatch(&ops);
+
+//     // var merk_buf: [100_000]u8 = undefined;
+//     var merk_buf: [7_000_000]u8 = undefined;
+//     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
+//     var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+//     defer merk_arena.deinit();
+
+//     var merk = try Merk.init(&merk_arena.allocator, "dbtest");
+//     defer merk.deinit();
+
+//     // initialize db
+//     merk.db.destroy("dbtest");
+//     merk.tree = null;
+
+//     try merk.apply(&ops);
+//     testing.expect(merk.tree.?.verify());
+
+//     try merk.commit();
+//     testing.expect(merk.tree.?.verify());
+// }
 
 test "init" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -162,9 +236,8 @@ test "apply and commit and fetch" {
 
     var merk = try Merk.init(&arena.allocator, "dbtest");
     defer merk.deinit();
+    defer merk.db.destroy("dbtest");
 
-    // initialize db
-    merk.db.destroy("dbtest");
     merk.tree = null;
 
     // apply

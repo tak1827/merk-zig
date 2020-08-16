@@ -26,7 +26,6 @@ pub const KV = struct {
         defer allocator.free(concated);
         concated = util.concat(allocator, &[2][]const u8{ concated, right.inner[0..] });
         defer allocator.free(concated);
-
         return Hash.init(concated);
     }
 };

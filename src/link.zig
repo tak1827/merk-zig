@@ -68,10 +68,9 @@ pub const Link = union(LinkTag) {
     }
 
     pub fn fromMarshal(hash_buf: []const u8, key_buf: []const u8) Link {
-        var _h: Hash = undefined;
-        std.mem.copy(u8, &_h.inner, hash_buf);
-        // TODO: key might be needed allocation
-        return Link{ .Pruned = Pruned{ .hash = _h, .child_heights = [2]u8{ 0, 0 }, .key = key_buf } };
+        var l = Link{ .Pruned = Pruned{ .hash = undefined, .child_heights = [2]u8{ 0, 0 }, .key = key_buf } };
+        std.mem.copy(u8, &l.Pruned.hash.inner, hash_buf);
+        return l;
     }
 
     pub fn intoStored(self: Link, t: *Tree) Link {

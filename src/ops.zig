@@ -4,8 +4,9 @@ const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const DB = @import("db.zig").RocksDataBbase;
 
-// TODO: change this as config
+// TODO: change these as config
 pub const BatcSizeLimit = 10_000;
+pub const BatchKeyLimit = 1024;
 pub const BatchValueLimit = 1024;
 
 pub const OpTag = enum(u1) { Put, Del };
@@ -16,16 +17,6 @@ pub const Op = struct {
     op: OpTag,
     key: []const u8,
     val: []const u8,
-
-    pub fn init(allocator: *Allocator, tag: OpTag, key: []const u8, val: []const u8) !*Self {
-        var op = try allocator.create(Op);
-        errdefer allocator.destroy(op);
-
-        op.op = tag;
-        op.key = key;
-        op.val = val;
-        return op;
-    }
 };
 
 pub fn applyTo(allocator: *Allocator, db: *DB, tree: ?*Tree, batch: []Op) OpError!*Tree {

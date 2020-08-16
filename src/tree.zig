@@ -129,8 +129,14 @@ pub const Tree = struct {
         c.write(self);
 
         if (c.prune(self)) {
-            if (self.link(true)) |l| self.setLink(true, l.intoPruned());
-            if (self.link(false)) |l| self.setLink(false, l.intoPruned());
+            if (self.link(true)) |l| {
+                defer self.allocator.destroy(l.tree());
+                self.setLink(true, l.intoPruned());
+            }
+            if (self.link(false)) |l| {
+                defer self.allocator.destroy(l.tree());
+                self.setLink(false, l.intoPruned());
+            }
         }
     }
 
@@ -158,7 +164,7 @@ pub const Tree = struct {
         return self;
     }
 
-    pub inline fn marshal(self: *Tree, w: anytype) !void {
+    pub fn marshal(self: *Tree, w: anytype) !void {
         @setRuntimeSafety(false);
         try w.writeIntBig(u32, @truncate(u32, self.key().len));
         try w.writeAll(self.key());
