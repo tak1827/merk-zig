@@ -23,7 +23,7 @@ pub fn DB(comptime T: type) type {
             self.db.deinit();
         }
 
-        pub fn put(self: *Self, key: []const u8, val: []const u8) void {
+        pub fn put(self: Self, key: []const u8, val: []const u8) void {
             self.db.put(key, val);
         }
 
@@ -31,15 +31,15 @@ pub fn DB(comptime T: type) type {
             self.db.clear();
         }
 
-        pub fn commit(self: *Self) !void {
+        pub fn commit(self: Self) !void {
             try self.db.commit();
         }
 
-        pub fn read(self: *Self, key: []const u8, w: anytype) !usize {
+        pub fn read(self: Self, key: []const u8, w: anytype) !usize {
             return try self.db.read(key, w);
         }
 
-        pub fn destroy(self: *Self, dir: ?[]const u8) void {
+        pub fn destroy(self: Self, dir: ?[]const u8) void {
             self.db.destroy(dir);
         }
     };
@@ -75,7 +75,7 @@ pub const RocksDB = struct {
         c.rocksdb_close(self.db);
     }
 
-    pub fn put(self: *RocksDB, key: []const u8, val: []const u8) void {
+    pub fn put(self: RocksDB, key: []const u8, val: []const u8) void {
         c.rocksdb_writebatch_put(self.batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len);
     }
 
@@ -83,7 +83,7 @@ pub const RocksDB = struct {
         c.rocksdb_writebatch_destroy(self.batch);
     }
 
-    pub fn commit(self: *RocksDB) !void {
+    pub fn commit(self: RocksDB) !void {
         const write_opts = c.rocksdb_writeoptions_create();
         var err: ?[*:0]u8 = null;
         c.rocksdb_write(self.db, write_opts, self.batch, &err);
@@ -93,7 +93,7 @@ pub const RocksDB = struct {
         }
     }
 
-    pub fn read(self: *RocksDB, key: []const u8, w: anytype) !usize {
+    pub fn read(self: RocksDB, key: []const u8, w: anytype) !usize {
         const read_opts = c.rocksdb_readoptions_create();
         defer c.rocksdb_readoptions_destroy(read_opts);
 
@@ -102,7 +102,7 @@ pub const RocksDB = struct {
         const c_key = @ptrCast([*:0]const u8, key);
         var read_ptr = c.rocksdb_get(self.db, read_opts, c_key, key.len, &read_len, &err);
         if (err) |message| {
-            std.debug.print("faild to commit to rockdb, {}\n", .{std.mem.spanZ(message)});
+            std.debug.print("faild to read from rockdb, {}\n", .{std.mem.spanZ(message)});
             return error.FailedRead;
         }
         if (read_len == 0) return 0;
@@ -112,7 +112,8 @@ pub const RocksDB = struct {
         return read_len;
     }
 
-    pub fn destroy(self: *RocksDB, dir: ?[]const u8) void {
+    // TODO: why don't delete any data?
+    pub fn destroy(self: RocksDB, dir: ?[]const u8) void {
         if (dir) |d| {
             c.rocksdb_delete_file(self.db, @ptrCast([*:0]const u8, d));
         } else {

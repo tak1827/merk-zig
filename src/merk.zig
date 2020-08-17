@@ -27,7 +27,7 @@ pub const Merk = struct {
         const top_key_len = try db.read(root_key, fbs.writer());
         if (top_key_len == 0) return merk;
 
-        var tree = Tree.fetchTrees(allocator, &db, fbs.getWritten(), Commiter.DafaultLevels);
+        var tree = Tree.fetchTrees(allocator, db, fbs.getWritten(), Commiter.DafaultLevels);
         merk.tree = tree;
         return merk;
     }
@@ -66,14 +66,14 @@ pub const Merk = struct {
     }
 
     pub fn applyUnchecked(self: *Merk, batch: []Op) !void {
-        self.tree = try o.applyTo(self.allocator, &self.db, self.tree, batch);
+        self.tree = try o.applyTo(self.allocator, self.db, self.tree, batch);
     }
 
     pub fn commit(self: *Merk) !void {
         var commiter: Commiter = undefined;
 
         if (self.tree) |tree| {
-            commiter = try Commiter.init(self.allocator, &self.db, tree.height());
+            commiter = try Commiter.init(self.allocator, self.db, tree.height());
             tree.commit(&commiter);
             commiter.put(root_key, tree.key());
         } else {
@@ -84,8 +84,9 @@ pub const Merk = struct {
     }
 
     pub fn get(self: *Merk, output: []u8, key: []const u8) usize {
-        var tree = Tree.fetchTree(self.allocator, &self.db, key);
-        self.allocator.destroy(tree);
+        var tree = Tree.fetchTree(self.allocator, self.db, key);
+        defer self.allocator.destroy(tree);
+
         var val = tree.value();
         std.mem.copy(u8, output, val);
         return val.len;
@@ -112,40 +113,43 @@ fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
     }
 }
 
-// test "benchmark: add and put with no commit" {
-//     var batch_buf: [7_000_000]u8 = undefined;
-//     var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
+test "benchmark: add and put with no commit" {
 
-//     var merk_buf: [7_000_000]u8 = undefined;
-//     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
+    std.debug.print("size: {}\n", .{@sizeOf(Tree)});
 
-//     const loop: usize = 10_000;
-//     var ops: [loop]Op = undefined;
+    var batch_buf: [5_000_000]u8 = undefined;
+    var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
 
-//     var i: usize = 0;
-//     while(i < 10) : (i += 1) {
-//         std.debug.print("counter: {}\n", .{i});
-//         var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
-//         try buildBatch(&batch_arena.allocator, &ops, loop);
-//         o.sortBatch(&ops);
+    var merk_buf: [5_000_000]u8 = undefined;
+    var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
 
-//         var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
-//         var merk = try Merk.init(&merk_arena.allocator, "dbtest");
+    const loop: usize = 1_000;
+    var ops: [loop]Op = undefined;
 
-//         // initialize
-//         if (i == 0) merk.tree = null;
+    var i: usize = 0;
+    while(i < 10) : (i += 1) {
+        std.debug.print("counter: {}\n", .{i});
+        var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
+        try buildBatch(&batch_arena.allocator, &ops, loop);
+        o.sortBatch(&ops);
 
-//         try merk.apply(&ops);
-//         testing.expect(merk.tree.?.verify());
+        var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
+        var merk = try Merk.init(&merk_arena.allocator, "dbtest");
 
-//         try merk.commit();
-//         testing.expect(merk.tree.?.verify());
+        // initialize
+        if (i == 0) merk.tree = null;
 
-//         merk.deinit();
-//         merk_arena.deinit();
-//         batch_arena.deinit();
-//     }
-// }
+        try merk.apply(&ops);
+        testing.expect(merk.tree.?.verify());
+
+        try merk.commit();
+        testing.expect(merk.tree.?.verify());
+
+        merk.deinit();
+        merk_arena.deinit();
+        batch_arena.deinit();
+    }
+}
 
 test "init" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
@@ -214,7 +218,7 @@ test "apply and commit and fetch" {
 
     // fetch
     var top_key = merk.tree.?.key();
-    var tree = Tree.fetchTrees(merk.allocator, &merk.db, top_key, Commiter.DafaultLevels);
+    var tree = Tree.fetchTrees(merk.allocator, merk.db, top_key, Commiter.DafaultLevels);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.value(), "value2");

@@ -14,12 +14,12 @@ const DB = @import("db.zig").RocksDataBbase;
 
 pub const Tree = struct {
     allocator: *Allocator,
-    db: *DB,
+    db: DB,
     kv: KV,
     left: ?Link,
     right: ?Link,
 
-    pub fn init(allocator: *Allocator, db: *DB, k: []const u8, v: []const u8) !*Tree {
+    pub fn init(allocator: *Allocator, db: DB, k: []const u8, v: []const u8) !*Tree {
         var tree = try allocator.create(Tree);
         errdefer allocator.destroy(tree);
 
@@ -67,7 +67,7 @@ pub const Tree = struct {
         return if (self.link(is_left)) |l| l.height() else 0;
     }
 
-    pub fn child(self: Tree, is_left: bool) ?*Tree {
+    pub fn child(self: *Tree, is_left: bool) ?*Tree {
         if (self.link(is_left)) |l| {
             if (@as(LinkTag, l) == .Pruned)
                 return Tree.fetchTree(self.allocator, self.db, l.key());
@@ -98,15 +98,15 @@ pub const Tree = struct {
     }
 
     pub fn detach(self: *Tree, is_left: bool) ?*Tree {
-        if (self.link(is_left)) |slot| {
+        if (self.link(is_left)) |l| {
             self.setLink(is_left, null);
 
-            if (@as(LinkTag, slot) == .Pruned) {
-                var _child = Tree.fetchTree(self.allocator, self.db, slot.key());
-                return _child;
+            if (@as(LinkTag, l) == .Pruned) {
+                // return Tree.fetchTree(self.allocator, &Merk.db.?, l.key());
+                return Tree.fetchTree(self.allocator, self.db, l.key());
             }
 
-            return slot.tree();
+            return l.tree();
         }
         return null;
     }
@@ -140,7 +140,7 @@ pub const Tree = struct {
         }
     }
 
-    pub fn fetchTree(allocator: *Allocator, db: *DB, k: []const u8) *Tree {
+    pub fn fetchTree(allocator: *Allocator, db: DB, k: []const u8) *Tree {
         const alloc = std.heap.page_allocator;
         var buf = std.ArrayList(u8).init(alloc);
         _ = db.read(k, buf.writer()) catch unreachable;
@@ -149,7 +149,7 @@ pub const Tree = struct {
         return Tree.unmarshal(allocator, db, buf.toOwnedSlice()) catch unreachable;
     }
 
-    pub fn fetchTrees(allocator: *Allocator, db: *DB, k: []const u8, level: u8) *Tree {
+    pub fn fetchTrees(allocator: *Allocator, db: DB, k: []const u8, level: u8) *Tree {
         const self = Tree.fetchTree(allocator, db, k);
 
         if (level > 0) {
@@ -191,7 +191,7 @@ pub const Tree = struct {
         }
     }
 
-    pub fn unmarshal(allocator: *Allocator, db: *DB, buf: []const u8) !*Tree {
+    pub fn unmarshal(allocator: *Allocator, db: DB, buf: []const u8) !*Tree {
         @setRuntimeSafety(false);
         var ptr: usize = 0;
         var bytes: [4]u8 = undefined;

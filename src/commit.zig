@@ -10,7 +10,7 @@ const DB = @import("db.zig").RocksDataBbase;
 
 pub const Commiter = struct {
     allocator: *Allocator,
-    db: *DB,
+    db: DB,
     height: u8,
     levels: u8,
 
@@ -18,7 +18,7 @@ pub const Commiter = struct {
     pub const DafaultLevels: u8 = 1;
 
     // TODO: pass level as arguments
-    pub fn init(allocator: *Allocator, db: *DB, height: u8) !Commiter {
+    pub fn init(allocator: *Allocator, db: DB, height: u8) !Commiter {
         return Commiter{
             .allocator = allocator,
             .db = db,
@@ -57,11 +57,11 @@ test "write" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    var commiter = try Commiter.init(&arena.allocator, &db, 1);
-    var tree = try Tree.init(&arena.allocator, &db, "key", "value");
+    var commiter = try Commiter.init(&arena.allocator, db, 1);
+    var tree = try Tree.init(&arena.allocator, db, "key", "value");
     commiter.write(tree);
     try commiter.commit();
-    var feched = Tree.fetchTree(&arena.allocator, &db, tree.key());
+    var feched = Tree.fetchTree(&arena.allocator, db, tree.key());
 
     testing.expectEqualSlices(u8, tree.key(), feched.key());
     testing.expectEqualSlices(u8, tree.value(), feched.value());

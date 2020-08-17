@@ -19,12 +19,12 @@ pub const Op = struct {
     val: []const u8,
 };
 
-pub fn applyTo(allocator: *Allocator, db: *DB, tree: ?*Tree, batch: []Op) OpError!*Tree {
+pub fn applyTo(allocator: *Allocator, db: DB, tree: ?*Tree, batch: []Op) OpError!*Tree {
     if (tree) |t| return try apply(allocator, t, batch);
     return try build(allocator, db, batch);
 }
 
-pub fn build(allocator: *Allocator, db: *DB, batch: []Op) OpError!*Tree {
+pub fn build(allocator: *Allocator, db: DB, batch: []Op) OpError!*Tree {
     var mid_index: usize = batch.len / 2;
     if (batch[mid_index].op == OpTag.Del) return error.DeleteNonexistantKey;
     var mid_tree = Tree.init(allocator, db, batch[mid_index].key, batch[mid_index].val) catch unreachable;
