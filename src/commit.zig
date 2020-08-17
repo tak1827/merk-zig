@@ -7,6 +7,7 @@ const o = @import("ops.zig");
 const Op = o.Op;
 const OpTag = o.OpTag;
 const DB = @import("db.zig").RocksDataBbase;
+const Merk = @import("merk.zig").Merk;
 
 pub const Commiter = struct {
     allocator: *Allocator,
@@ -32,7 +33,7 @@ pub const Commiter = struct {
     }
 
     pub fn write(self: *Commiter, tree: *Tree) void {
-        const allocator = std.heap.page_allocator;
+        var allocator = if (Merk.arena_allocator) |_| &Merk.arena_allocator.?.allocator else self.allocator;
         var buf = std.ArrayList(u8).init(allocator);
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();

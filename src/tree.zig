@@ -11,6 +11,7 @@ const Hash = @import("hash.zig").HashBlake2s256;
 const o = @import("ops.zig");
 const Commiter = @import("commit.zig").Commiter;
 const DB = @import("db.zig").RocksDataBbase;
+const Merk = @import("merk.zig").Merk;
 
 pub const Tree = struct {
     allocator: *Allocator,
@@ -102,7 +103,6 @@ pub const Tree = struct {
             self.setLink(is_left, null);
 
             if (@as(LinkTag, l) == .Pruned) {
-                // return Tree.fetchTree(self.allocator, &Merk.db.?, l.key());
                 return Tree.fetchTree(self.allocator, self.db, l.key());
             }
 
@@ -141,8 +141,8 @@ pub const Tree = struct {
     }
 
     pub fn fetchTree(allocator: *Allocator, db: DB, k: []const u8) *Tree {
-        const alloc = std.heap.page_allocator;
-        var buf = std.ArrayList(u8).init(alloc);
+        var _allocator = if (Merk.arena_allocator) |_| &Merk.arena_allocator.?.allocator else allocator;
+        var buf = std.ArrayList(u8).init(_allocator);
         _ = db.read(k, buf.writer()) catch unreachable;
         defer buf.deinit();
 

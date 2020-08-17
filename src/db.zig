@@ -122,18 +122,18 @@ pub const RocksDB = struct {
     }
 };
 
-test "init" {
-    var db = try DB(RocksDB).init("dbtest");
-    defer db.deinit();
-    defer db.destroy("dbtest");
+// test "init" {
+//     var db = try DB(RocksDB).init("dbtest");
+//     defer db.deinit();
+//     defer db.destroy("dbtest");
 
-    var key = "testkey";
-    var value = "testvalue";
-    db.put(key, value);
-    try db.commit();
+//     var key = "testkey";
+//     var value = "testvalue";
+//     db.put(key, value);
+//     try db.commit();
 
-    var buf: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    _ = try db.read(key, fbs.writer());
-    testing.expectEqualSlices(u8, fbs.getWritten(), value);
-}
+//     var buf: [1024]u8 = undefined;
+//     var fbs = std.io.fixedBufferStream(&buf);
+//     _ = try db.read(key, fbs.writer());
+//     testing.expectEqualSlices(u8, fbs.getWritten(), value);
+// }

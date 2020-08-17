@@ -18,7 +18,13 @@ pub const Merk = struct {
     db: DB,
     tree: ?*Tree = null,
 
+    pub var arena_allocator: ?heap.ArenaAllocator = null;
+
     pub fn init(allocator: *Allocator, name: ?[]const u8) !Merk {
+        var _allocator = try allocator.create(Allocator);
+        _allocator = heap.page_allocator;
+        Merk.arena_allocator = heap.ArenaAllocator.init(_allocator);
+
         var db = try DB.init(name);
         var merk: Merk = Merk{ .allocator = allocator, .db = db, .tree = null };
 
@@ -33,6 +39,7 @@ pub const Merk = struct {
     }
 
     pub fn deinit(self: Merk) void {
+        if (Merk.arena_allocator) |arena| arena.deinit();
         self.db.deinit();
     }
 
