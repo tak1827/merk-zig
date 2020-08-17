@@ -96,7 +96,7 @@ pub const Merk = struct {
 fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
     var i: usize = 0;
     var buffer: [100]u8 = undefined;
-    while(i < loop) : (i += 1) {
+    while (i < loop) : (i += 1) {
         // key
         const key = Hash.init(U.intToString(&buffer, @as(u64, i)));
         var key_buf = try std.ArrayList(u8).initCapacity(allocator, key.inner.len);
@@ -114,7 +114,6 @@ fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
 }
 
 test "benchmark: add and put with no commit" {
-
     std.debug.print("size: {}\n", .{@sizeOf(Tree)});
 
     var batch_buf: [5_000_000]u8 = undefined;
@@ -127,7 +126,7 @@ test "benchmark: add and put with no commit" {
     var ops: [loop]Op = undefined;
 
     var i: usize = 0;
-    while(i < 10) : (i += 1) {
+    while (i < 10) : (i += 1) {
         std.debug.print("counter: {}\n", .{i});
         var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
         try buildBatch(&batch_arena.allocator, &ops, loop);

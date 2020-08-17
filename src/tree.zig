@@ -200,16 +200,16 @@ pub const Tree = struct {
         if (ptr + 4 + 4 + 1 + 1 > buf.len) return error.EndOfFile;
 
         // key
-        mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+        mem.copy(u8, &bytes, buf[ptr .. ptr + 4]);
         ptr += 4;
         const key_len = mem.readIntBig(u32, &bytes);
-        const k = buf[ptr..ptr+key_len];
+        const k = buf[ptr .. ptr + key_len];
         ptr += key_len;
         // val
-        mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+        mem.copy(u8, &bytes, buf[ptr .. ptr + 4]);
         ptr += 4;
         const val_len = mem.readIntBig(u32, &bytes);
-        const v = buf[ptr..ptr+val_len];
+        const v = buf[ptr .. ptr + val_len];
         ptr += val_len;
 
         var self = try Tree.init(allocator, db, k, v);
@@ -218,12 +218,12 @@ pub const Tree = struct {
         const left_flg = buf[ptr];
         ptr += 1;
         if (left_flg == 0x01) {
-            const hash_buf = buf[ptr..ptr+hash_len];
+            const hash_buf = buf[ptr .. ptr + hash_len];
             ptr += hash_len;
-            mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+            mem.copy(u8, &bytes, buf[ptr .. ptr + 4]);
             ptr += 4;
             const val_left_len = mem.readIntBig(u32, &bytes);
-            const val_left = buf[ptr..ptr+val_left_len];
+            const val_left = buf[ptr .. ptr + val_left_len];
             ptr += val_left_len;
             self.left = Link.fromMarshal(hash_buf, val_left);
         }
@@ -231,12 +231,12 @@ pub const Tree = struct {
         const right_flg = buf[ptr];
         ptr += 1;
         if (right_flg == 0x01) {
-            const hash_buf = buf[ptr..ptr+hash_len];
+            const hash_buf = buf[ptr .. ptr + hash_len];
             ptr += hash_len;
-            mem.copy(u8, &bytes, buf[ptr..ptr+4]);
+            mem.copy(u8, &bytes, buf[ptr .. ptr + 4]);
             ptr += 4;
             const val_right_len = mem.readIntBig(u32, &bytes);
-            const val_right = buf[ptr..ptr+val_right_len];
+            const val_right = buf[ptr .. ptr + val_right_len];
             ptr += val_right_len;
             self.right = Link.fromMarshal(hash_buf, val_right);
         }
@@ -285,7 +285,6 @@ test "marshal and unmarshal" {
     testing.expectEqualSlices(u8, unmarshaled.link(true).?.key(), tree_l.key());
     testing.expectEqualSlices(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]);
     testing.expectEqualSlices(u8, unmarshaled.link(false).?.key(), tree_r.key());
-
 }
 
 test "detach" {

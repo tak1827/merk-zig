@@ -39,7 +39,7 @@ test "intToString" {
     var buffer: [100]u8 = undefined;
     testing.expectEqualSlices(u8, "1", intToString(&buffer, @as(u8, 1)));
 
-    var i : usize = 1000;
+    var i: usize = 1000;
     testing.expectEqualSlices(u8, "1000", intToString(&buffer, @as(u64, i)));
 }
 

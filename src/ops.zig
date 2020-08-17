@@ -10,7 +10,7 @@ pub const BatchKeyLimit = 1024;
 pub const BatchValueLimit = 1024;
 
 pub const OpTag = enum(u1) { Put, Del };
-pub const OpError = error{ DeleteNonexistantKey };
+pub const OpError = error{DeleteNonexistantKey};
 
 pub const Op = struct {
     const Self = @This();
@@ -237,7 +237,7 @@ test "sortBatch" {
     sortBatch(&batch);
 
     var i: usize = 0;
-    while(i < batch.len - 1) : (i += 1) {
-        testing.expect(batchCmpLessThan({}, batch[i], batch[i+1]));
+    while (i < batch.len - 1) : (i += 1) {
+        testing.expect(batchCmpLessThan({}, batch[i], batch[i + 1]));
     }
 }

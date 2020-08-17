@@ -17,14 +17,14 @@ pub const KV = struct {
     }
 
     pub fn kvHash(key: []const u8, val: []const u8) Hash {
-        var buf: [o.BatchKeyLimit+o.BatchValueLimit]u8 = undefined;
+        var buf: [o.BatchKeyLimit + o.BatchValueLimit]u8 = undefined;
         var buffer = std.heap.FixedBufferAllocator.init(&buf);
         var kv = util.concat(&buffer.allocator, &[2][]const u8{ key, val });
         return Hash.init(kv);
     }
 
     pub fn nodeHash(kv: Hash, left: Hash, right: Hash) Hash {
-        var buf: [32*10]u8 = undefined;
+        var buf: [32 * 10]u8 = undefined;
         var buffer = std.heap.FixedBufferAllocator.init(&buf);
         var concated = util.concat(&buffer.allocator, &[2][]const u8{ kv.inner[0..], left.inner[0..] });
         concated = util.concat(&buffer.allocator, &[2][]const u8{ concated, right.inner[0..] });
