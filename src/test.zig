@@ -7,6 +7,7 @@ const m = @import("merk.zig");
 const ops = @import("ops.zig");
 const t = @import("tree.zig");
 const util = @import("util.zig");
+const ben = @import("benchmark.zig");
 
 test "" {
     @import("std").meta.refAllDecls(@This());

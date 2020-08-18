@@ -100,63 +100,6 @@ pub const Merk = struct {
     }
 };
 
-fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
-    var i: usize = 0;
-    var buffer: [100]u8 = undefined;
-    while (i < loop) : (i += 1) {
-        // key
-        const key = Hash.init(U.intToString(&buffer, @as(u64, i)));
-        var key_buf = try std.ArrayList(u8).initCapacity(allocator, key.inner.len);
-        defer key_buf.deinit();
-        try key_buf.appendSlice(&key.inner);
-        // val
-        var buf: [255]u8 = undefined;
-        const val = buf[0..U.randRepeatString(&buf, 98, 255, u8, @as(u64, i))];
-        var val_buf = try std.ArrayList(u8).initCapacity(allocator, val.len);
-        defer val_buf.deinit();
-        try val_buf.appendSlice(val);
-
-        ops[i] = Op{ .op = OpTag.Put, .key = key_buf.toOwnedSlice(), .val = val_buf.toOwnedSlice() };
-    }
-}
-
-test "benchmark: add and put with no commit" {
-    std.debug.print("size: {}\n", .{@sizeOf(Tree)});
-
-    var batch_buf: [5_000_000]u8 = undefined;
-    var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
-
-    var merk_buf: [5_000_000]u8 = undefined;
-    var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
-
-    const loop: usize = 1_000;
-    var ops: [loop]Op = undefined;
-
-    var i: usize = 0;
-    while (i < 10) : (i += 1) {
-        std.debug.print("counter: {}\n", .{i});
-        var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
-        try buildBatch(&batch_arena.allocator, &ops, loop);
-        o.sortBatch(&ops);
-
-        var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
-        var merk = try Merk.init(&merk_arena.allocator, "dbtest");
-
-        // initialize
-        if (i == 0) merk.tree = null;
-
-        try merk.apply(&ops);
-        testing.expect(merk.tree.?.verify());
-
-        try merk.commit();
-        testing.expect(merk.tree.?.verify());
-
-        merk.deinit();
-        merk_arena.deinit();
-        batch_arena.deinit();
-    }
-}
-
 test "init" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
