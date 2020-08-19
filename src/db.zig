@@ -59,17 +59,35 @@ pub const RocksDB = struct {
 
         c.rocksdb_options_optimize_level_style_compaction(opts, @boolToInt(false));
         c.rocksdb_options_set_create_if_missing(opts, @boolToInt(true));
+        // const env = c.rocksdb_create_default_env();
+        // c.rocksdb_options_set_env(opts, env);
+        // c.rocksdb_options_set_paranoid_checks(opts, 1);
+        // c.rocksdb_options_set_max_open_files(opts, 10);
+        // c.rocksdb_options_set_base_background_compactions(opts, 1);
+        // c.rocksdb_options_set_target_file_size_multiplier(opts, 13);
+        // c.rocksdb_options_set_target_file_size_base(opts, 256);
 
         // bloom filter option
         // https://github.com/facebook/rocksdb/wiki/RocksDB-Bloom-Filter
-        const block_ops = c.rocksdb_block_based_options_create();
-        const bloom = c.rocksdb_filterpolicy_create_bloom_full(10);
-        c.rocksdb_block_based_options_set_filter_policy(block_ops, bloom);
-        c.rocksdb_block_based_options_set_cache_index_and_filter_blocks(block_ops, @boolToInt(true));
-        c.rocksdb_options_set_block_based_table_factory(opts, block_ops);
+        // const block_ops = c.rocksdb_block_based_options_create();
+        // const bloom = c.rocksdb_filterpolicy_create_bloom_full(10);
+        // c.rocksdb_block_based_options_set_filter_policy(block_ops, bloom);
+        // c.rocksdb_block_based_options_set_cache_index_and_filter_blocks(block_ops, @boolToInt(true));
+        // c.rocksdb_options_set_block_based_table_factory(opts, block_ops);
 
         // prevent error of OptimisticTransactionDB
         c.rocksdb_options_set_write_buffer_size(opts, o.BatcSizeLimit * (o.BatchKeyLimit + o.BatchValueLimit));
+
+        // cuckoo is faster than bloom, merk guarantee hash collusion doesn't happen
+        // https://github.com/facebook/rocksdb/wiki/CuckooTable-Format
+        const cuckoo_options = c.rocksdb_cuckoo_options_create();
+        c.rocksdb_cuckoo_options_set_hash_ratio(cuckoo_options, 0.5);
+        c.rocksdb_cuckoo_options_set_max_search_depth(cuckoo_options, 200);
+        c.rocksdb_cuckoo_options_set_cuckoo_block_size(cuckoo_options, 10);
+        c.rocksdb_cuckoo_options_set_identity_as_first_hash(cuckoo_options, 1);
+        c.rocksdb_cuckoo_options_set_use_module_hash(cuckoo_options, 0);
+        c.rocksdb_options_set_cuckoo_table_factory(opts, cuckoo_options);
+        c.rocksdb_options_set_allow_mmap_reads(opts, @boolToInt(true));
 
         // use OptimisticTransactionDB
         // https://github.com/facebook/rocksdb/wiki/Transactions#optimistictransactiondb

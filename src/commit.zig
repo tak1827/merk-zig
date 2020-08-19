@@ -1,6 +1,5 @@
 const std = @import("std");
 const testing = std.testing;
-const Allocator = std.mem.Allocator;
 const c = @cImport(@cInclude("rocksdb/c.h"));
 const Tree = @import("tree.zig").Tree;
 const o = @import("ops.zig");
@@ -10,7 +9,6 @@ const DB = @import("db.zig").RocksDataBbase;
 const Merk = @import("merk.zig").Merk;
 
 pub const Commiter = struct {
-    allocator: *Allocator,
     db: DB,
     height: u8,
     levels: u8,
@@ -19,9 +17,8 @@ pub const Commiter = struct {
     pub const DafaultLevels: u8 = 1;
 
     // TODO: pass level as arguments
-    pub fn init(allocator: *Allocator, db: DB, height: u8) !Commiter {
+    pub fn init(db: DB, height: u8) !Commiter {
         return Commiter{
-            .allocator = allocator,
             .db = db,
             .height = height,
             .levels = Commiter.DafaultLevels,
@@ -33,7 +30,7 @@ pub const Commiter = struct {
     }
 
     pub fn write(self: *Commiter, tree: *Tree) void {
-        var allocator = if (Merk.arena_allocator) |_| &Merk.arena_allocator.?.allocator else self.allocator;
+        var allocator = if (Merk.heap_allocator) |_| &Merk.heap_allocator.?.allocator else Merk.stack_allocator;
         var buf = std.ArrayList(u8).init(allocator);
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();
@@ -56,13 +53,14 @@ test "write" {
     defer db.deinit();
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    Merk.stack_allocator = &arena.allocator;
     defer arena.deinit();
 
-    var commiter = try Commiter.init(&arena.allocator, db, 1);
-    var tree = try Tree.init(&arena.allocator, db, "key", "value");
+    var commiter = try Commiter.init(db, 1);
+    var tree = try Tree.init(db, "key", "value");
     commiter.write(tree);
     try commiter.commit();
-    var feched = Tree.fetchTree(&arena.allocator, db, tree.key());
+    var feched = Tree.fetchTree(db, tree.key());
 
     testing.expectEqualSlices(u8, tree.key(), feched.key());
     testing.expectEqualSlices(u8, tree.value(), feched.value());

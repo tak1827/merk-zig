@@ -120,13 +120,13 @@ pub const Stored = struct {
 };
 
 test "key" {
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
+    var tree: Tree = Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
     const l: Link = Link{ .Modified = Modified{ .child_heights = .{ 0, 2 }, .tree = &tree } };
     testing.expectEqualSlices(u8, l.key(), "key");
 }
 
 test "tree" {
-    var tree: Tree = Tree{ .allocator = undefined, .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
+    var tree: Tree = Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null };
     const l: Link = Link{ .Modified = Modified{ .child_heights = .{ 0, 2 }, .tree = &tree } };
     var linkedTree = l.tree().?;
     testing.expectEqual(&tree, linkedTree);
