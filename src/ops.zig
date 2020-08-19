@@ -1,7 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
-const DB = @import("db.zig").RocksDataBbase;
 const Merk = @import("merk.zig").Merk;
 
 // TODO: change these as config
@@ -19,15 +18,15 @@ pub const Op = struct {
     val: []const u8,
 };
 
-pub fn applyTo(db: DB, tree: ?*Tree, batch: []Op) OpError!*Tree {
+pub fn applyTo(tree: ?*Tree, batch: []Op) OpError!*Tree {
     if (tree) |t| return try apply(t, batch);
-    return try build(db, batch);
+    return try build(batch);
 }
 
-pub fn build(db: DB, batch: []Op) OpError!*Tree {
+pub fn build(batch: []Op) OpError!*Tree {
     var mid_index: usize = batch.len / 2;
     if (batch[mid_index].op == OpTag.Del) return error.DeleteNonexistantKey;
-    var mid_tree = Tree.init(db, batch[mid_index].key, batch[mid_index].val) catch unreachable;
+    var mid_tree = Tree.init(batch[mid_index].key, batch[mid_index].val) catch unreachable;
     return try recurse(mid_tree, batch, mid_index, true);
 }
 
@@ -53,13 +52,13 @@ pub fn recurse(tree: *Tree, batch: []Op, mid: usize, exclusive: bool) OpError!*T
 
     if (left_batch.len != 0) {
         var detached = tree.detach(true);
-        var applied = try applyTo(tree.db, detached, left_batch);
+        var applied = try applyTo(detached, left_batch);
         tree.attach(true, applied);
     }
 
     if (right_batch.len != 0) {
         var detached = tree.detach(false);
-        var applied = try applyTo(tree.db, detached, right_batch);
+        var applied = try applyTo(detached, right_batch);
         tree.attach(false, applied);
     }
 
@@ -151,14 +150,14 @@ test "apply" {
     var op9 = Op{ .op = OpTag.Put, .key = "key9", .val = "value" };
 
     var batch1 = [_]Op{ op3, op6, op8 };
-    var tree = try applyTo(undefined, null, &batch1);
+    var tree = try applyTo(null, &batch1);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key6");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
 
     var batch2 = [_]Op{ op0, op1, op2, op3, op6, op8 };
-    tree = try applyTo(undefined, tree, &batch2);
+    tree = try applyTo(tree, &batch2);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
@@ -168,7 +167,7 @@ test "apply" {
     testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
 
     var batch3 = [_]Op{ op0, op4, op5, op7, op9 };
-    tree = try applyTo(undefined, tree, &batch3);
+    tree = try applyTo(tree, &batch3);
     testing.expect(tree.verify());
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
@@ -192,7 +191,7 @@ test "build" {
     };
     Merk.stack_allocator = testing.allocator;
 
-    var tree = try build(undefined, &batch);
+    var tree = try build(&batch);
     testing.expectEqualSlices(u8, tree.key(), "key3");
     testing.expectEqualSlices(u8, tree.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, tree.child(false).?.key(), "key5");

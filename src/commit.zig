@@ -57,7 +57,7 @@ test "write" {
     defer arena.deinit();
 
     var commiter = try Commiter.init(db, 1);
-    var tree = try Tree.init(db, "key", "value");
+    var tree = try Tree.init("key", "value");
     commiter.write(tree);
     try commiter.commit();
     var feched = Tree.fetchTree(db, tree.key());

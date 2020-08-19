@@ -14,9 +14,9 @@ const LinkTag = @import("link.zig").LinkTag;
 const U = @import("util.zig");
 
 pub const Merk = struct {
-    db: DB,
     tree: ?*Tree = null,
 
+    pub var db: ?DB = null;
     pub var stack_allocator: *Allocator = testing.allocator;
     pub var heap_allocator: ?heap.ArenaAllocator = null;
 
@@ -26,22 +26,22 @@ pub const Merk = struct {
         _allocator = heap.page_allocator;
         Merk.heap_allocator = heap.ArenaAllocator.init(_allocator);
 
-        var db = try DB.init(name);
-        var merk: Merk = Merk{ .db = db, .tree = null };
+        Merk.db = try DB.init(name);
+        var merk: Merk = Merk{ .tree = null };
 
         var buf: [o.BatchKeyLimit]u8 = undefined;
         var fbs = std.io.fixedBufferStream(&buf);
-        const top_key_len = try db.read(root_key, fbs.writer());
+        const top_key_len = try Merk.db.?.read(root_key, fbs.writer());
         if (top_key_len == 0) return merk;
 
-        var tree = Tree.fetchTrees(db, fbs.getWritten(), Commiter.DafaultLevels);
+        var tree = Tree.fetchTrees(Merk.db, fbs.getWritten(), Commiter.DafaultLevels);
         merk.tree = tree;
         return merk;
     }
 
     pub fn deinit(self: Merk) void {
         if (Merk.heap_allocator) |arena| arena.deinit();
-        self.db.deinit();
+        if (Merk.db) |d| d.deinit();
     }
 
     pub fn rootHash(self: *Merk) Hash {
@@ -74,14 +74,14 @@ pub const Merk = struct {
     }
 
     pub fn applyUnchecked(self: *Merk, batch: []Op) !void {
-        self.tree = try o.applyTo(self.db, self.tree, batch);
+        self.tree = try o.applyTo(self.tree, batch);
     }
 
     pub fn commit(self: *Merk) !void {
         var commiter: Commiter = undefined;
 
         if (self.tree) |tree| {
-            commiter = try Commiter.init(self.db, tree.height());
+            commiter = try Commiter.init(Merk.db.?, tree.height());
             tree.commit(&commiter);
             commiter.put(root_key, tree.key());
         } else {
@@ -92,7 +92,7 @@ pub const Merk = struct {
     }
 
     pub fn get(self: *Merk, output: []u8, key: []const u8) usize {
-        var tree = Tree.fetchTree(self.db, key);
+        var tree = Tree.fetchTree(null, key);
         const allocator = &Merk.heap_allocator.?.allocator;
         defer allocator.destroy(tree);
 
@@ -129,7 +129,7 @@ test "apply and commit and fetch" {
     defer arena.deinit();
 
     var merk = try Merk.init(&arena.allocator, "dbtest");
-    defer merk.db.destroy("dbtest");
+    defer Merk.db.?.destroy("dbtest");
     defer merk.deinit();
 
     merk.tree = null;
@@ -169,7 +169,7 @@ test "apply and commit and fetch" {
 
     // fetch
     var top_key = merk.tree.?.key();
-    var tree = Tree.fetchTrees(merk.db, top_key, Commiter.DafaultLevels);
+    var tree = Tree.fetchTrees(Merk.db, top_key, Commiter.DafaultLevels);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.value(), "value2");

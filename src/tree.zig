@@ -13,16 +13,14 @@ const DB = @import("db.zig").RocksDataBbase;
 const Merk = @import("merk.zig").Merk;
 
 pub const Tree = struct {
-    db: DB,
     kv: KV,
     left: ?Link,
     right: ?Link,
 
-    pub fn init(db: DB, k: []const u8, v: []const u8) !*Tree {
+    pub fn init(k: []const u8, v: []const u8) !*Tree {
         var tree = try Merk.stack_allocator.create(Tree);
         errdefer allocator.destroy(tree);
 
-        tree.db = db;
         tree.kv = KV.init(k, v);
         tree.left = null;
         tree.right = null;
@@ -68,7 +66,7 @@ pub const Tree = struct {
     pub fn child(self: *Tree, is_left: bool) ?*Tree {
         if (self.link(is_left)) |l| {
             if (@as(LinkTag, l) == .Pruned)
-                return Tree.fetchTree(self.db, l.key());
+                return Tree.fetchTree(null, l.key());
             return l.tree();
         }
         return null;
@@ -100,7 +98,7 @@ pub const Tree = struct {
             self.setLink(is_left, null);
 
             if (@as(LinkTag, l) == .Pruned) {
-                return Tree.fetchTree(self.db, l.key());
+                return Tree.fetchTree(null, l.key());
             }
 
             return l.tree();
@@ -137,16 +135,17 @@ pub const Tree = struct {
         }
     }
 
-    pub fn fetchTree(db: DB, k: []const u8) *Tree {
+    pub fn fetchTree(db: ?DB, k: []const u8) *Tree {
         var _allocator = if (Merk.heap_allocator) |_| &Merk.heap_allocator.?.allocator else Merk.stack_allocator;
         var buf = std.ArrayList(u8).init(_allocator);
-        _ = db.read(k, buf.writer()) catch unreachable;
+        const _db = if (db) |d| d else Merk.db.?;
+        _ = _db.read(k, buf.writer()) catch unreachable;
         defer buf.deinit();
 
-        return Tree.unmarshal(db, buf.toOwnedSlice()) catch unreachable;
+        return Tree.unmarshal(buf.toOwnedSlice()) catch unreachable;
     }
 
-    pub fn fetchTrees(db: DB, k: []const u8, level: u8) *Tree {
+    pub fn fetchTrees(db: ?DB, k: []const u8, level: u8) *Tree {
         const self = Tree.fetchTree(db, k);
 
         if (level > 0) {
@@ -188,7 +187,7 @@ pub const Tree = struct {
         }
     }
 
-    pub fn unmarshal(db: DB, buf: []const u8) !*Tree {
+    pub fn unmarshal(buf: []const u8) !*Tree {
         @setRuntimeSafety(false);
         var ptr: usize = 0;
         var bytes: [4]u8 = undefined;
@@ -209,7 +208,7 @@ pub const Tree = struct {
         const v = buf[ptr .. ptr + val_len];
         ptr += val_len;
 
-        var self = try Tree.init(db, k, v);
+        var self = try Tree.init(k, v);
 
         // left
         const left_flg = buf[ptr];
@@ -262,11 +261,11 @@ test "marshal and unmarshal" {
     // marshal
     var hash_l = KV.kvHash("leftkey", "leftvalue");
     var hash_r = KV.kvHash("rightkey", "rightvalue");
-    var tree_l = Tree{ .db = undefined, .kv = KV.init("keylefttree", "value"), .left = undefined, .right = undefined };
-    var tree_r = Tree{ .db = undefined, .kv = KV.init("keyrighttree", "value"), .left = undefined, .right = undefined };
+    var tree_l = Tree{ .kv = KV.init("keylefttree", "value"), .left = undefined, .right = undefined };
+    var tree_r = Tree{ .kv = KV.init("keyrighttree", "value"), .left = undefined, .right = undefined };
     var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = &tree_l } };
     var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = &tree_r } };
-    var tree: Tree = Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = left, .right = right };
+    var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = right };
     var buf: [255]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     try tree.marshal(fbs.writer());
@@ -274,7 +273,7 @@ test "marshal and unmarshal" {
 
     // unmarshal
     Merk.stack_allocator = testing.allocator;
-    var unmarshaled = try Tree.unmarshal(undefined, marshaled);
+    var unmarshaled = try Tree.unmarshal(marshaled);
     defer Merk.stack_allocator.destroy(unmarshaled);
 
     testing.expectEqualSlices(u8, unmarshaled.key(), "key");
@@ -286,10 +285,10 @@ test "marshal and unmarshal" {
 }
 
 test "detach" {
-    var tree1 = try Tree.init(undefined, "key1", "value1");
+    var tree1 = try Tree.init("key1", "value1");
     defer Merk.stack_allocator.destroy(tree1);
-    var tree2 = try Tree.init(undefined, "key2", "value2");
-    defer  Merk.stack_allocator.destroy(tree2);
+    var tree2 = try Tree.init("key2", "value2");
+    defer Merk.stack_allocator.destroy(tree2);
     tree1.attach(false, tree2);
     var tree3 = tree1.detach(false);
 
@@ -301,24 +300,24 @@ test "detach" {
 test "init" {
     const key = "key";
     const val = "value";
-    const tree = try Tree.init(undefined, key, val);
-    defer  Merk.stack_allocator.destroy(tree);
+    const tree = try Tree.init(key, val);
+    defer Merk.stack_allocator.destroy(tree);
 
     testing.expectEqualSlices(u8, tree.kv.key, key);
 }
 
 test "key" {
-    testing.expectEqualSlices(u8, Tree.key(Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null }), "key");
+    testing.expectEqualSlices(u8, Tree.key(Tree{ .kv = KV.init("key", "value"), .left = null, .right = null }), "key");
 }
 
 test "value" {
-    testing.expectEqualSlices(u8, Tree.value(Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = null, .right = null }), "value");
+    testing.expectEqualSlices(u8, Tree.value(Tree{ .kv = KV.init("key", "value"), .left = null, .right = null }), "value");
 }
 
 test "childHash" {
     var hash = KV.kvHash("key", "value");
     var left: Link = Link{ .Pruned = Pruned{ .hash = hash, .child_heights = .{ 0, 0 }, .key = undefined } };
-    var tree: Tree = Tree{ .db = undefined, .kv = KV.init("key", "value"), .left = left, .right = null };
+    var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = null };
 
     testing.expectEqualSlices(u8, &tree.childHash(true).inner, &hash.inner);
     testing.expectEqualSlices(u8, &tree.childHash(false).inner, &Hash.zeroHash().inner);
@@ -326,13 +325,13 @@ test "childHash" {
 
 test "height" {
     var left: Link = Link{ .Pruned = Pruned{ .hash = undefined, .child_heights = .{ 0, 2 }, .key = undefined } };
-    testing.expectEqual(Tree.height(Tree{ .db = undefined, .kv = undefined, .left = left, .right = null }), 4);
+    testing.expectEqual(Tree.height(Tree{ .kv = undefined, .left = left, .right = null }), 4);
 }
 
 test "attach" {
-    var tree1 = try Tree.init(undefined, "key1", "value1");
+    var tree1 = try Tree.init("key1", "value1");
     defer testing.allocator.destroy(tree1);
-    var tree2 = try Tree.init(undefined, "key2", "value2");
+    var tree2 = try Tree.init("key2", "value2");
     defer testing.allocator.destroy(tree2);
 
     tree1.attach(false, tree2);
