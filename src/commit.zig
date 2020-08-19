@@ -29,7 +29,7 @@ pub const Commiter = struct {
     }
 
     pub fn put(self: *Commiter, key: []const u8, val: []const u8) void {
-        self.db.put(key, val);
+        self.db.put(key, val) catch unreachable;
     }
 
     pub fn write(self: *Commiter, tree: *Tree) void {
@@ -38,7 +38,7 @@ pub const Commiter = struct {
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();
 
-        self.db.put(tree.key(), buf.toOwnedSlice());
+        self.db.put(tree.key(), buf.toOwnedSlice()) catch unreachable;
     }
 
     pub fn commit(self: *Commiter) !void {
@@ -52,8 +52,8 @@ pub const Commiter = struct {
 
 test "write" {
     var db = try DB.init("dbtest");
-    defer db.deinit();
     defer db.destroy("dbtest");
+    defer db.deinit();
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

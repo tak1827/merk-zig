@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @cImport(@cInclude("rocksdb/c.h"));
 const testing = std.testing;
+const o = @import("ops.zig");
 
 pub const root_key = ".root";
 pub const node_key_prefix = "@1:";
@@ -23,8 +24,8 @@ pub fn DB(comptime T: type) type {
             self.db.deinit();
         }
 
-        pub fn put(self: Self, key: []const u8, val: []const u8) void {
-            self.db.put(key, val);
+        pub fn put(self: Self, key: []const u8, val: []const u8) !void {
+            try self.db.put(key, val);
         }
 
         pub fn clear(self: Self) void {
@@ -46,50 +47,84 @@ pub fn DB(comptime T: type) type {
 }
 
 pub const RocksDB = struct {
-    db: *c.rocksdb_t,
-    batch: *c.rocksdb_writebatch_t,
+    db: ?*c.rocksdb_t,
+    optdb: ?*c.rocksdb_optimistictransactiondb_t,
+    batch: ?*c.rocksdb_transaction_t,
 
     pub fn init(dir: ?[]const u8) !RocksDB {
         var rockdb: RocksDB = undefined;
 
-        // opendb
         const opts = c.rocksdb_options_create();
         defer c.rocksdb_options_destroy(opts);
-        c.rocksdb_options_increase_parallelism(opts, 8);
+
         c.rocksdb_options_optimize_level_style_compaction(opts, @boolToInt(false));
         c.rocksdb_options_set_create_if_missing(opts, @boolToInt(true));
+
+        // bloom filter option
+        // https://github.com/facebook/rocksdb/wiki/RocksDB-Bloom-Filter
+        const block_ops = c.rocksdb_block_based_options_create();
+        const bloom = c.rocksdb_filterpolicy_create_bloom_full(10);
+        c.rocksdb_block_based_options_set_filter_policy(block_ops, bloom);
+        c.rocksdb_block_based_options_set_cache_index_and_filter_blocks(block_ops, @boolToInt(true));
+        c.rocksdb_options_set_block_based_table_factory(opts, block_ops);
+
+        // prevent error of OptimisticTransactionDB
+        c.rocksdb_options_set_write_buffer_size(opts, o.BatcSizeLimit * (o.BatchKeyLimit + o.BatchValueLimit));
+
+        // use OptimisticTransactionDB
+        // https://github.com/facebook/rocksdb/wiki/Transactions#optimistictransactiondb
         var err: ?[*:0]u8 = null;
-        rockdb.db = if (dir) |d| c.rocksdb_open(opts, @ptrCast([*:0]const u8, d), &err).? else c.rocksdb_open(opts, default_db_dir, &err).?;
+        const name = if (dir) |d| @ptrCast([*:0]const u8, d) else default_db_dir;
+        rockdb.optdb = c.rocksdb_optimistictransactiondb_open(opts, name, &err);
         if (err) |message| {
             std.debug.print("failed to open rockdb, {}\n", .{std.mem.spanZ(message)});
             return error.FaildOpen;
         }
 
+        rockdb.db = c.rocksdb_optimistictransactiondb_get_base_db(rockdb.optdb);
+
         // create batch
-        rockdb.batch = c.rocksdb_writebatch_create().?;
+        const write_opts = c.rocksdb_writeoptions_create();
+        const opttx_opts = c.rocksdb_optimistictransaction_options_create();
+        rockdb.batch = c.rocksdb_optimistictransaction_begin(rockdb.optdb, write_opts, opttx_opts, null);
+
         return rockdb;
     }
 
     pub fn deinit(self: RocksDB) void {
         self.clear();
-        c.rocksdb_close(self.db);
+        c.rocksdb_optimistictransactiondb_close_base_db(self.db);
+        c.rocksdb_optimistictransactiondb_close(self.optdb);
     }
 
-    pub fn put(self: RocksDB, key: []const u8, val: []const u8) void {
-        c.rocksdb_writebatch_put(self.batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len);
+    pub fn put(self: RocksDB, key: []const u8, val: []const u8) !void {
+        var err: ?[*:0]u8 = null;
+        c.rocksdb_transaction_put(self.batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len, &err);
+        if (err) |message| {
+            std.debug.print("faild to put to rockdb, {}\n", .{std.mem.spanZ(message)});
+            return error.FailedPut;
+        }
     }
 
     pub fn clear(self: RocksDB) void {
-        c.rocksdb_writebatch_destroy(self.batch);
+        c.rocksdb_transaction_destroy(self.batch);
     }
 
     pub fn commit(self: RocksDB) !void {
-        const write_opts = c.rocksdb_writeoptions_create();
         var err: ?[*:0]u8 = null;
-        c.rocksdb_write(self.db, write_opts, self.batch, &err);
+        c.rocksdb_transaction_commit(self.batch, &err);
         if (err) |message| {
-            std.debug.print("faild to commit to rockdb, {}\n", .{std.mem.spanZ(message)});
+            std.debug.print("faild to commit rockdb, {}\n", .{std.mem.spanZ(message)});
             return error.FaildCommit;
+        }
+    }
+
+    pub fn rollback(self: RocksDB) !void {
+        var err: ?[*:0]u8 = null;
+        c.rocksdb_transaction_rollback(self.batch, &err);
+        if (err) |message| {
+            std.debug.print("faild to rollback rockdb, {}\n", .{std.mem.spanZ(message)});
+            return error.FaildRollback;
         }
     }
 
@@ -112,28 +147,29 @@ pub const RocksDB = struct {
         return read_len;
     }
 
-    // TODO: why don't delete any data?
     pub fn destroy(self: RocksDB, dir: ?[]const u8) void {
-        if (dir) |d| {
-            c.rocksdb_delete_file(self.db, @ptrCast([*:0]const u8, d));
-        } else {
-            c.rocksdb_delete_file(self.db, default_db_dir);
+        const opts = c.rocksdb_options_create();
+        var err: ?[*:0]u8 = null;
+        const name = if (dir) |d| @ptrCast([*:0]const u8, d) else default_db_dir;
+        c.rocksdb_destroy_db(opts, name, &err);
+        if (err) |message| {
+            std.debug.print("faild to destroy rockdb, {}\n", .{std.mem.spanZ(message)});
         }
     }
 };
 
-// test "init" {
-//     var db = try DB(RocksDB).init("dbtest");
-//     defer db.deinit();
-//     defer db.destroy("dbtest");
+test "init" {
+    var db = try DB(RocksDB).init("dbtest");
+    defer db.destroy("dbtest");
+    defer db.deinit();
 
-//     var key = "testkey";
-//     var value = "testvalue";
-//     db.put(key, value);
-//     try db.commit();
+    var key = "testkey";
+    var value = "testvalue";
+    try db.put(key, value);
+    try db.commit();
 
-//     var buf: [1024]u8 = undefined;
-//     var fbs = std.io.fixedBufferStream(&buf);
-//     _ = try db.read(key, fbs.writer());
-//     testing.expectEqualSlices(u8, fbs.getWritten(), value);
-// }
+    var buf: [1024]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    _ = try db.read(key, fbs.writer());
+    testing.expectEqualSlices(u8, fbs.getWritten(), value);
+}

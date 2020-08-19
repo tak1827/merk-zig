@@ -127,8 +127,8 @@ test "apply and commit and fetch" {
     defer arena.deinit();
 
     var merk = try Merk.init(&arena.allocator, "dbtest");
-    defer merk.deinit();
     defer merk.db.destroy("dbtest");
+    defer merk.deinit();
 
     merk.tree = null;
 

@@ -31,18 +31,21 @@ fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
     }
 }
 
-fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !void {
+fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !u128 {
     var merk = try Merk.init(allocator, "dbtest");
+    if (i == 0) merk.tree = null; // init
 
-    // initialize
-    if (i == 0) merk.tree = null;
+    var timer = try time.Timer.start();
 
     try merk.apply(ops);
-    // testing.expect(merk.tree.?.verify());
     try merk.commit();
-    // testing.expect(merk.tree.?.verify());
+
+    const runtime = timer.read();
+    std.debug.print("counter: {}, runtime: {}\n", .{ i, runtime });
 
     merk.deinit();
+
+    return runtime;
 }
 
 test "benchmark: add and put with no commit" {
@@ -55,12 +58,10 @@ test "benchmark: add and put with no commit" {
     const batch_size: usize = 1_000;
     var ops: [batch_size]Op = undefined;
 
-    var timer = try time.Timer.start();
     var runtime_sum: u128 = 0;
     var i: usize = 0;
     var loop: usize = 10;
     while (i < loop) : (i += 1) {
-        std.debug.print("counter: {}\n", .{i});
 
         // prepare batch
         var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
@@ -68,17 +69,14 @@ test "benchmark: add and put with no commit" {
         o.sortBatch(&ops);
         var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
 
-        timer.reset();
-        try fromInitToDeint(&merk_arena.allocator, &ops, i);
-        const runtime = timer.read();
-        runtime_sum += runtime;
+        runtime_sum += try fromInitToDeint(&merk_arena.allocator, &ops, i);
         doNotOptimize(fromInitToDeint);
 
         merk_arena.deinit();
         batch_arena.deinit();
     }
 
-    const runtime_mean = runtime_sum / i;
+    const runtime_mean = runtime_sum / loop;
     std.debug.print("Iterations: {}, Mean(ns): {}\n", .{ loop, runtime_mean });
 }
 
