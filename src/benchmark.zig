@@ -49,13 +49,13 @@ fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !u128 {
 }
 
 test "benchmark: add and put with no commit" {
-    var batch_buf: [2_000_000]u8 = undefined;
+    var batch_buf: [8_000_000]u8 = undefined;
     var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
 
-    var merk_buf: [5_000_000]u8 = undefined;
+    var merk_buf: [8_000_000]u8 = undefined;
     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
 
-    const batch_size: usize = 1_000;
+    const batch_size: usize = 4_000;
     var ops: [batch_size]Op = undefined;
 
     var runtime_sum: u128 = 0;
