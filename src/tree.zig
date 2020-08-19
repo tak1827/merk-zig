@@ -110,29 +110,32 @@ pub const Tree = struct {
         if (self.link(true)) |l| {
             if (@as(LinkTag, l) == .Modified) {
                 l.tree().?.commit(c);
-                self.setLink(true, l.intoStored(undefined));
+                // Note: disable pruning
+                // self.setLink(true, l.intoStored(undefined));
             }
         }
 
         if (self.link(false)) |l| {
             if (@as(LinkTag, l) == .Modified) {
                 l.tree().?.commit(c);
-                self.setLink(false, l.intoStored(undefined));
+                // Note: disable pruning
+                // self.setLink(false, l.intoStored(undefined));
             }
         }
 
         c.write(self);
 
-        if (c.prune(self)) {
-            if (self.link(true)) |l| {
-                defer Merk.stack_allocator.destroy(l.tree());
-                self.setLink(true, l.intoPruned());
-            }
-            if (self.link(false)) |l| {
-                defer Merk.stack_allocator.destroy(l.tree());
-                self.setLink(false, l.intoPruned());
-            }
-        }
+        // Note: disable pruning, but keep this for future use case
+        // if (c.prune(self)) {
+        //     if (self.link(true)) |l| {
+        //         defer Merk.stack_allocator.destroy(l.tree());
+        //         self.setLink(true, l.intoPruned());
+        //     }
+        //     if (self.link(false)) |l| {
+        //         defer Merk.stack_allocator.destroy(l.tree());
+        //         self.setLink(false, l.intoPruned());
+        //     }
+        // }
     }
 
     pub fn fetchTree(db: ?DB, k: []const u8) *Tree {
@@ -257,44 +260,8 @@ pub const Tree = struct {
     }
 };
 
-test "marshal and unmarshal" {
-    // marshal
-    var hash_l = KV.kvHash("leftkey", "leftvalue");
-    var hash_r = KV.kvHash("rightkey", "rightvalue");
-    var tree_l = Tree{ .kv = KV.init("keylefttree", "value"), .left = undefined, .right = undefined };
-    var tree_r = Tree{ .kv = KV.init("keyrighttree", "value"), .left = undefined, .right = undefined };
-    var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = &tree_l } };
-    var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = &tree_r } };
-    var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = right };
-    var buf: [255]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try tree.marshal(fbs.writer());
-    var marshaled: []const u8 = fbs.getWritten();
-
-    // unmarshal
-    Merk.stack_allocator = testing.allocator;
-    var unmarshaled = try Tree.unmarshal(marshaled);
-    defer Merk.stack_allocator.destroy(unmarshaled);
-
-    testing.expectEqualSlices(u8, unmarshaled.key(), "key");
-    testing.expectEqualSlices(u8, unmarshaled.value(), "value");
-    testing.expectEqualSlices(u8, unmarshaled.link(true).?.hash().?.inner[0..], &hash_l.inner);
-    testing.expectEqualSlices(u8, unmarshaled.link(true).?.key(), tree_l.key());
-    testing.expectEqualSlices(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]);
-    testing.expectEqualSlices(u8, unmarshaled.link(false).?.key(), tree_r.key());
-}
-
-test "detach" {
-    var tree1 = try Tree.init("key1", "value1");
-    defer Merk.stack_allocator.destroy(tree1);
-    var tree2 = try Tree.init("key2", "value2");
-    defer Merk.stack_allocator.destroy(tree2);
-    tree1.attach(false, tree2);
-    var tree3 = tree1.detach(false);
-
-    testing.expectEqual(tree3, tree2);
-    testing.expectEqual(tree1.link(true), null);
-    testing.expectEqual(tree1.link(false), null);
+test "check size" {
+    std.debug.print("size of tree: {}\n", .{@sizeOf(Tree)});
 }
 
 test "init" {
@@ -336,4 +303,44 @@ test "attach" {
 
     tree1.attach(false, tree2);
     testing.expectEqualSlices(u8, tree1.right.?.tree().?.key()[0..], tree2.key()[0..]);
+}
+
+test "detach" {
+    var tree1 = try Tree.init("key1", "value1");
+    defer Merk.stack_allocator.destroy(tree1);
+    var tree2 = try Tree.init("key2", "value2");
+    defer Merk.stack_allocator.destroy(tree2);
+    tree1.attach(false, tree2);
+    var tree3 = tree1.detach(false);
+
+    testing.expectEqual(tree3, tree2);
+    testing.expectEqual(tree1.link(true), null);
+    testing.expectEqual(tree1.link(false), null);
+}
+
+test "marshal and unmarshal" {
+    // marshal
+    var hash_l = KV.kvHash("leftkey", "leftvalue");
+    var hash_r = KV.kvHash("rightkey", "rightvalue");
+    var tree_l = Tree{ .kv = KV.init("keylefttree", "value"), .left = undefined, .right = undefined };
+    var tree_r = Tree{ .kv = KV.init("keyrighttree", "value"), .left = undefined, .right = undefined };
+    var left = Link{ .Stored = Stored{ .hash = hash_l, .child_heights = undefined, .tree = &tree_l } };
+    var right = Link{ .Stored = Stored{ .hash = hash_r, .child_heights = undefined, .tree = &tree_r } };
+    var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = left, .right = right };
+    var buf: [255]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try tree.marshal(fbs.writer());
+    var marshaled: []const u8 = fbs.getWritten();
+
+    // unmarshal
+    Merk.stack_allocator = testing.allocator;
+    var unmarshaled = try Tree.unmarshal(marshaled);
+    defer Merk.stack_allocator.destroy(unmarshaled);
+
+    testing.expectEqualSlices(u8, unmarshaled.key(), "key");
+    testing.expectEqualSlices(u8, unmarshaled.value(), "value");
+    testing.expectEqualSlices(u8, unmarshaled.link(true).?.hash().?.inner[0..], &hash_l.inner);
+    testing.expectEqualSlices(u8, unmarshaled.link(true).?.key(), tree_l.key());
+    testing.expectEqualSlices(u8, unmarshaled.link(false).?.hash().?.inner[0..], hash_r.inner[0..]);
+    testing.expectEqualSlices(u8, unmarshaled.link(false).?.key(), tree_r.key());
 }

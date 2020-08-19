@@ -119,6 +119,10 @@ pub const Stored = struct {
     tree: *Tree,
 };
 
+test "check size" {
+    std.debug.print("size of link: {}\n", .{@sizeOf(Link)});
+}
+
 test "key" {
     var tree: Tree = Tree{ .kv = KV.init("key", "value"), .left = null, .right = null };
     const l: Link = Link{ .Modified = Modified{ .child_heights = .{ 0, 2 }, .tree = &tree } };

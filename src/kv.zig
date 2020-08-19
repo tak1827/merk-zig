@@ -32,6 +32,10 @@ pub const KV = struct {
     }
 };
 
+test "check size" {
+    std.debug.print("size of kv: {}\n", .{@sizeOf(KV)});
+}
+
 test "init" {
     const kv = KV.init("key", "value");
     const expected = Hash.init("keyvalue");

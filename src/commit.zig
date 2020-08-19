@@ -42,6 +42,7 @@ pub const Commiter = struct {
         try self.db.commit();
     }
 
+    // Note: disable this function, but keep this for future use case
     pub fn prune(self: *Commiter, tree: *Tree) bool {
         return self.height - tree.height() >= self.levels;
     }
