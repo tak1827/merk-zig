@@ -110,16 +110,14 @@ pub const Tree = struct {
         if (self.link(true)) |l| {
             if (@as(LinkTag, l) == .Modified) {
                 l.tree().?.commit(c);
-                // Note: disable pruning
-                // self.setLink(true, l.intoStored(undefined));
+                self.setLink(true, l.intoStored(undefined));
             }
         }
 
         if (self.link(false)) |l| {
             if (@as(LinkTag, l) == .Modified) {
                 l.tree().?.commit(c);
-                // Note: disable pruning
-                // self.setLink(false, l.intoStored(undefined));
+                self.setLink(false, l.intoStored(undefined));
             }
         }
 

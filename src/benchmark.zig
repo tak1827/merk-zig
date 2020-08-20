@@ -11,12 +11,12 @@ const OpTag = o.OpTag;
 const U = @import("util.zig");
 const Merk = @import("merk.zig").Merk;
 
-fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize) !void {
+fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize, counter: usize) !void {
     var i: usize = 0;
     var buffer: [100]u8 = undefined;
     while (i < loop) : (i += 1) {
         // key
-        const key = Hash.init(U.intToString(&buffer, @as(u64, i)));
+        const key = Hash.init(U.intToString(&buffer, @as(u64, (i + loop * counter))));
         var key_buf = try std.ArrayList(u8).initCapacity(allocator, key.inner.len);
         defer key_buf.deinit();
         try key_buf.appendSlice(&key.inner);
@@ -48,6 +48,29 @@ fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !u128 {
     return runtime;
 }
 
+fn hashing(i: usize) !u128 {
+    var timer = try time.Timer.start();
+
+    var buffer: [100]u8 = undefined;
+    _ = Hash.init(U.intToString(&buffer, @as(u64, (i))));
+
+    const runtime = timer.read();
+
+    return runtime;
+}
+
+test "benchmark: kv hashing" {
+    var runtime_sum: u128 = 0;
+    var i: usize = 0;
+    var loop: usize = 1000;
+    while (i < loop) : (i += 1) {
+        runtime_sum += try hashing(i);
+        doNotOptimize(hashing);
+    }
+    const runtime_mean = runtime_sum / loop;
+    std.debug.print("Iterations: {}, Mean(ns): {}\n", .{ loop, runtime_mean });
+}
+
 test "benchmark: add and put with no commit" {
     var batch_buf: [8_000_000]u8 = undefined;
     var batch_fixed_buf = heap.FixedBufferAllocator.init(&batch_buf);
@@ -55,17 +78,16 @@ test "benchmark: add and put with no commit" {
     var merk_buf: [8_000_000]u8 = undefined;
     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
 
-    const batch_size: usize = 4_000;
+    const batch_size: usize = 1_300;
     var ops: [batch_size]Op = undefined;
 
     var runtime_sum: u128 = 0;
     var i: usize = 0;
     var loop: usize = 10;
     while (i < loop) : (i += 1) {
-
         // prepare batch
         var batch_arena = heap.ArenaAllocator.init(&batch_fixed_buf.allocator);
-        try buildBatch(&batch_arena.allocator, &ops, batch_size);
+        try buildBatch(&batch_arena.allocator, &ops, batch_size, i);
         o.sortBatch(&ops);
         var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
 

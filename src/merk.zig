@@ -167,8 +167,14 @@ test "apply and commit and fetch" {
     // testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(true).?), .Pruned);
     // testing.expectEqual(@as(LinkTag, merk.tree.?.child(false).?.link(false).?), .Pruned);
 
+    // top key
+    var buf: [o.BatchKeyLimit]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    _ = try Merk.db.?.read(root_key, fbs.writer());
+    var top_key = fbs.getWritten();
+    testing.expectEqualSlices(u8, top_key, merk.tree.?.key());
+
     // fetch
-    var top_key = merk.tree.?.key();
     var tree = Tree.fetchTrees(Merk.db, top_key, Commiter.DafaultLevels);
     testing.expectEqualSlices(u8, merk.tree.?.key(), "key5");
     testing.expectEqualSlices(u8, merk.tree.?.child(true).?.key(), "key2");
