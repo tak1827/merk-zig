@@ -3,7 +3,7 @@ const testing = std.testing;
 const crypto = std.crypto;
 const Allocator = std.mem.Allocator;
 
-pub const HashBlake2s256 = Hash(crypto.Blake2s256);
+pub const HashBlake2s256 = Hash(crypto.Blake3);
 
 pub fn Hash(comptime T: type) type {
     return struct {

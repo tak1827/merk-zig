@@ -31,11 +31,11 @@ fn buildBatch(allocator: *Allocator, ops: []Op, comptime loop: usize, counter: u
     }
 }
 
-fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !u128 {
+fn fromInitToDeint(allocator: *Allocator, timer: *time.Timer, ops: []Op, i: usize) !u128 {
     var merk = try Merk.init(allocator, "dbtest");
     if (i == 0) merk.tree = null; // init
 
-    var timer = try time.Timer.start();
+    timer.reset();
 
     try merk.apply(ops);
     try merk.commit();
@@ -48,8 +48,8 @@ fn fromInitToDeint(allocator: *Allocator, ops: []Op, i: usize) !u128 {
     return runtime;
 }
 
-fn hashing(i: usize) !u128 {
-    var timer = try time.Timer.start();
+fn hashing(timer: *time.Timer, i: usize) !u128 {
+    timer.reset();
 
     var buffer: [100]u8 = undefined;
     _ = Hash.init(U.intToString(&buffer, @as(u64, (i))));
@@ -60,11 +60,12 @@ fn hashing(i: usize) !u128 {
 }
 
 test "benchmark: kv hashing" {
+    var timer = try time.Timer.start();
     var runtime_sum: u128 = 0;
     var i: usize = 0;
     var loop: usize = 1000;
     while (i < loop) : (i += 1) {
-        runtime_sum += try hashing(i);
+        runtime_sum += try hashing(&timer, i);
         doNotOptimize(hashing);
     }
     const runtime_mean = runtime_sum / loop;
@@ -81,6 +82,7 @@ test "benchmark: add and put with no commit" {
     const batch_size: usize = 1_300;
     var ops: [batch_size]Op = undefined;
 
+    var timer = try time.Timer.start();
     var runtime_sum: u128 = 0;
     var i: usize = 0;
     var loop: usize = 10;
@@ -91,7 +93,7 @@ test "benchmark: add and put with no commit" {
         o.sortBatch(&ops);
         var merk_arena = heap.ArenaAllocator.init(&merk_fixed_buf.allocator);
 
-        runtime_sum += try fromInitToDeint(&merk_arena.allocator, &ops, i);
+        runtime_sum += try fromInitToDeint(&merk_arena.allocator, &timer, &ops, i);
         doNotOptimize(fromInitToDeint);
 
         merk_arena.deinit();
