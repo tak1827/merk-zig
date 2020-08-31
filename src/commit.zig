@@ -26,7 +26,7 @@ pub const Commiter = struct {
     }
 
     pub fn put(self: *Commiter, key: []const u8, val: []const u8) void {
-        self.db.put(key, val) catch unreachable;
+        self.db.put(key, val);
     }
 
     pub fn write(self: *Commiter, tree: *Tree) void {
@@ -35,7 +35,7 @@ pub const Commiter = struct {
         tree.marshal(buf.writer()) catch unreachable;
         defer buf.deinit();
 
-        self.db.put(tree.key(), buf.toOwnedSlice()) catch unreachable;
+        self.db.put(tree.key(), buf.toOwnedSlice());
     }
 
     pub fn commit(self: *Commiter) !void {

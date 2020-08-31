@@ -24,8 +24,8 @@ pub fn DB(comptime T: type) type {
             self.db.deinit();
         }
 
-        pub fn put(self: Self, key: []const u8, val: []const u8) !void {
-            try self.db.put(key, val);
+        pub fn put(self: Self, key: []const u8, val: []const u8) void {
+            self.db.put(key, val);
         }
 
         pub fn clear(self: Self) void {
@@ -48,8 +48,7 @@ pub fn DB(comptime T: type) type {
 
 pub const RocksDB = struct {
     db: ?*c.rocksdb_t,
-    optdb: ?*c.rocksdb_optimistictransactiondb_t,
-    batch: ?*c.rocksdb_transaction_t,
+    batch: ?*c.rocksdb_writebatch_t,
 
     pub fn init(dir: ?[]const u8) !RocksDB {
         var rockdb: RocksDB = undefined;
@@ -59,13 +58,6 @@ pub const RocksDB = struct {
 
         c.rocksdb_options_optimize_level_style_compaction(opts, @boolToInt(false));
         c.rocksdb_options_set_create_if_missing(opts, @boolToInt(true));
-        // const env = c.rocksdb_create_default_env();
-        // c.rocksdb_options_set_env(opts, env);
-        // c.rocksdb_options_set_paranoid_checks(opts, 1);
-        // c.rocksdb_options_set_max_open_files(opts, 10);
-        // c.rocksdb_options_set_base_background_compactions(opts, 1);
-        // c.rocksdb_options_set_target_file_size_multiplier(opts, 13);
-        // c.rocksdb_options_set_target_file_size_base(opts, 256);
 
         // bloom filter option
         // https://github.com/facebook/rocksdb/wiki/RocksDB-Bloom-Filter
@@ -75,76 +67,53 @@ pub const RocksDB = struct {
         c.rocksdb_block_based_options_set_cache_index_and_filter_blocks(block_ops, @boolToInt(true));
         c.rocksdb_options_set_block_based_table_factory(opts, block_ops);
 
-        // prevent error of OptimisticTransactionDB
-        c.rocksdb_options_set_write_buffer_size(opts, o.BatcSizeLimit * (o.BatchKeyLimit + o.BatchValueLimit));
-
-        // cuckoo doesn't work for large size merk(like more 1k trees)
-        // https://github.com/facebook/rocksdb/wiki/CuckooTable-Format
-        // const cuckoo_options = c.rocksdb_cuckoo_options_create();
-        // c.rocksdb_cuckoo_options_set_hash_ratio(cuckoo_options, 0.5);
-        // c.rocksdb_cuckoo_options_set_max_search_depth(cuckoo_options, 200);
-        // c.rocksdb_cuckoo_options_set_cuckoo_block_size(cuckoo_options, 10);
-        // c.rocksdb_cuckoo_options_set_identity_as_first_hash(cuckoo_options, 1);
-        // c.rocksdb_cuckoo_options_set_use_module_hash(cuckoo_options, 0);
-        // c.rocksdb_options_set_cuckoo_table_factory(opts, cuckoo_options);
-        // c.rocksdb_options_set_allow_mmap_reads(opts, @boolToInt(true));
-
         // use OptimisticTransactionDB
         // https://github.com/facebook/rocksdb/wiki/Transactions#optimistictransactiondb
         var err: ?[*:0]u8 = null;
         const name = if (dir) |d| @ptrCast([*:0]const u8, d) else default_db_dir;
-        rockdb.optdb = c.rocksdb_optimistictransactiondb_open(opts, name, &err);
+        rockdb.db = c.rocksdb_open(opts, @ptrCast([*:0]const u8, name), &err);
         if (err) |message| {
             std.debug.print("failed to open rockdb, {}\n", .{std.mem.spanZ(message)});
             return error.FaildOpen;
         }
 
-        rockdb.db = c.rocksdb_optimistictransactiondb_get_base_db(rockdb.optdb);
-
         // create batch
-        const write_opts = c.rocksdb_writeoptions_create();
-        const opttx_opts = c.rocksdb_optimistictransaction_options_create();
-        rockdb.batch = c.rocksdb_optimistictransaction_begin(rockdb.optdb, write_opts, opttx_opts, null);
+        rockdb.batch = c.rocksdb_writebatch_create();
 
         return rockdb;
     }
 
     pub fn deinit(self: RocksDB) void {
         self.clear();
-        c.rocksdb_optimistictransactiondb_close_base_db(self.db);
-        c.rocksdb_optimistictransactiondb_close(self.optdb);
+        c.rocksdb_close(self.db);
     }
 
-    pub fn put(self: RocksDB, key: []const u8, val: []const u8) !void {
-        var err: ?[*:0]u8 = null;
-        c.rocksdb_transaction_put(self.batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len, &err);
-        if (err) |message| {
-            std.debug.print("faild to put to rockdb, {}\n", .{std.mem.spanZ(message)});
-            return error.FailedPut;
-        }
+    pub fn put(self: RocksDB, key: []const u8, val: []const u8) void {
+        c.rocksdb_writebatch_put(self.batch, @ptrCast([*]const u8, key), key.len, @ptrCast([*]const u8, val), val.len);
     }
 
     pub fn clear(self: RocksDB) void {
-        c.rocksdb_transaction_destroy(self.batch);
+        c.rocksdb_writebatch_destroy(self.batch);
     }
 
     pub fn commit(self: RocksDB) !void {
+        const write_opts = c.rocksdb_writeoptions_create();
         var err: ?[*:0]u8 = null;
-        c.rocksdb_transaction_commit(self.batch, &err);
+        c.rocksdb_write(self.db, write_opts, self.batch, &err);
         if (err) |message| {
-            std.debug.print("faild to commit rockdb, {}\n", .{std.mem.spanZ(message)});
+            std.debug.print("faild to commit to rockdb, {}\n", .{std.mem.spanZ(message)});
             return error.FaildCommit;
         }
     }
 
-    pub fn rollback(self: RocksDB) !void {
-        var err: ?[*:0]u8 = null;
-        c.rocksdb_transaction_rollback(self.batch, &err);
-        if (err) |message| {
-            std.debug.print("faild to rollback rockdb, {}\n", .{std.mem.spanZ(message)});
-            return error.FaildRollback;
-        }
-    }
+    // pub fn rollback(self: RocksDB) !void {
+    //     var err: ?[*:0]u8 = null;
+    //     c.rocksdb_transaction_rollback(self.batch, &err);
+    //     if (err) |message| {
+    //         std.debug.print("faild to rollback rockdb, {}\n", .{std.mem.spanZ(message)});
+    //         return error.FaildRollback;
+    //     }
+    // }
 
     pub fn read(self: RocksDB, key: []const u8, w: anytype) !usize {
         const read_opts = c.rocksdb_readoptions_create();
@@ -183,7 +152,7 @@ test "init" {
 
     var key = "testkey";
     var value = "testvalue";
-    try db.put(key, value);
+    db.put(key, value);
     try db.commit();
 
     var buf: [1024]u8 = undefined;
