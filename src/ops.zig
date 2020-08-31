@@ -18,7 +18,7 @@ pub const Op = struct {
     val: []const u8,
 };
 
-pub fn applyTo(tree: ?*Tree, batch: []Op) OpError!*Tree {
+pub fn applyTo(tree: ?*Tree, batch: []Op) OpError!?*Tree {
     if (tree) |t| return try apply(t, batch);
     return try build(batch);
 }
@@ -30,7 +30,7 @@ pub fn build(batch: []Op) OpError!*Tree {
     return try recurse(mid_tree, batch, mid_index, true);
 }
 
-pub fn apply(tree: *Tree, batch: []Op) !*Tree {
+pub fn apply(tree: *Tree, batch: []Op) !?*Tree {
     var found: bool = false;
     var mid: usize = 0;
     binaryBatchSearch(tree.key(), batch, &found, &mid);
@@ -39,7 +39,20 @@ pub fn apply(tree: *Tree, batch: []Op) !*Tree {
         if (batch[mid].op == OpTag.Put) {
             tree.updateVal(batch[mid].val);
         } else if (batch[mid].op == OpTag.Del) {
-            // TODO: delete
+            var maybe_tree = remove(tree);
+
+            var left_batch = batch[0..mid];
+            var right_batch = batch[mid+1..];
+
+            if (left_batch.len != 0) {
+                maybe_tree = try applyTo(maybe_tree, left_batch);
+            }
+
+            if (right_batch.len != 0) {
+                maybe_tree = try applyTo(maybe_tree, right_batch);
+            }
+
+            return maybe_tree;
         }
     }
 
@@ -100,6 +113,52 @@ pub fn rotate(tree: *Tree, is_left: bool) *Tree {
     return balanced_child;
 }
 
+pub fn remove(tree: *Tree) ?*Tree {
+    var has_left = if (tree.link(true)) |_| true else false;
+    var has_right = if (tree.link(false)) |_| true else false;
+
+    // no child
+    if (!has_left and !has_right) return null;
+
+    var is_left = tree.childHeight(true) > tree.childHeight(false);
+
+    // single child
+    if (!(has_left and has_right)) return tree.detach(is_left);
+
+    // two child, promote edge of taller child
+    var tall_child = tree.detach(is_left).?;
+    var short_child = tree.detach(!is_left).?;
+    return promoteEdge(tall_child, short_child, !is_left);
+}
+
+pub fn promoteEdge(tree: *Tree, attach: *Tree, is_left: bool) *Tree {
+    var edge = removeEdge(tree, is_left);
+    var _edge = edge.edge;
+
+    _edge.attach(!is_left, edge.child);
+    _edge.attach(is_left, attach);
+
+    return balance(_edge);
+}
+
+const Edge = struct {
+    edge: *Tree,
+    child: ?*Tree,
+};
+
+pub fn removeEdge(tree: *Tree, is_left: bool) Edge {
+    if (tree.link(is_left)) |_| {} else {
+        return .{ .edge = tree, .child = tree.detach(!is_left) };
+    }
+
+    var child = tree.detach(is_left).?;
+    var edge = removeEdge(child, is_left);
+
+    tree.attach(is_left, edge.child);
+
+    return .{ .edge = edge.edge, .child = balance(tree) };
+}
+
 pub fn binaryBatchSearch(needle: []const u8, batch: []Op, found: *bool, index: *usize) void {
     var low: usize = 0;
     var high: usize = batch.len - 1;
@@ -151,36 +210,63 @@ test "apply" {
 
     var batch1 = [_]Op{ op3, op6, op8 };
     var tree = try applyTo(null, &batch1);
-    testing.expect(tree.verify());
-    testing.expectEqualSlices(u8, tree.key(), "key6");
-    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key3");
-    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key8");
+    testing.expect(tree.?.verify());
+    testing.expectEqualSlices(u8, tree.?.key(), "key6");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.key(), "key3");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.key(), "key8");
 
     var batch2 = [_]Op{ op0, op1, op2, op3, op6, op8 };
     tree = try applyTo(tree, &batch2);
-    testing.expect(tree.verify());
-    testing.expectEqualSlices(u8, tree.key(), "key3");
-    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
-    testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
-    testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
-    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
+    testing.expect(tree.?.verify());
+    testing.expectEqualSlices(u8, tree.?.key(), "key3");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.key(), "key1");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.child(true).?.key(), "key0");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.child(false).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.key(), "key6");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(false).?.key(), "key8");
 
     var batch3 = [_]Op{ op0, op4, op5, op7, op9 };
     tree = try applyTo(tree, &batch3);
-    testing.expect(tree.verify());
-    testing.expectEqualSlices(u8, tree.key(), "key3");
-    testing.expectEqualSlices(u8, tree.child(true).?.key(), "key1");
-    testing.expectEqualSlices(u8, tree.child(true).?.child(true).?.key(), "key0");
-    testing.expectEqualSlices(u8, tree.child(true).?.child(false).?.key(), "key2");
-    testing.expectEqualSlices(u8, tree.child(false).?.key(), "key6");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.key(), "key5");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(true).?.child(true).?.key(), "key4");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.key(), "key8");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(true).?.key(), "key7");
-    testing.expectEqualSlices(u8, tree.child(false).?.child(false).?.child(false).?.key(), "key9");
+    testing.expect(tree.?.verify());
+    testing.expectEqualSlices(u8, tree.?.key(), "key3");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.key(), "key1");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.child(true).?.key(), "key0");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.child(false).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.key(), "key6");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(true).?.key(), "key5");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(true).?.child(true).?.key(), "key4");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(false).?.key(), "key8");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(false).?.child(true).?.key(), "key7");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(false).?.child(false).?.key(), "key9");
 
     // TODO: delete case
+    var op10 = Op{ .op = OpTag.Del, .key = "key0", .val = undefined };
+    var op11 = Op{ .op = OpTag.Del, .key = "key1", .val = undefined };
+    var op12 = Op{ .op = OpTag.Del, .key = "key2", .val = undefined };
+    var op13 = Op{ .op = OpTag.Del, .key = "key3", .val = undefined };
+    var op14 = Op{ .op = OpTag.Del, .key = "key4", .val = undefined };
+    var op15 = Op{ .op = OpTag.Del, .key = "key5", .val = undefined };
+    var op16 = Op{ .op = OpTag.Del, .key = "key6", .val = undefined };
+    var op17 = Op{ .op = OpTag.Del, .key = "key7", .val = undefined };
+    var op18 = Op{ .op = OpTag.Del, .key = "key8", .val = undefined };
+    var op19 = Op{ .op = OpTag.Del, .key = "key9", .val = undefined };
+
+    var batch4 = [_]Op{ op11, op15, op16, op19 };
+    tree = try applyTo(tree, &batch4);
+    testing.expectEqualSlices(u8, tree.?.key(), "key3");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.key(), "key2");
+    testing.expectEqualSlices(u8, tree.?.child(true).?.child(true).?.key(), "key0");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.key(), "key7");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(true).?.key(), "key4");
+    testing.expectEqualSlices(u8, tree.?.child(false).?.child(false).?.key(), "key8");
+
+    var batch5 = [_]Op{ op12, op13, op17 };
+    tree = try applyTo(tree, &batch5);
+    testing.expect(tree.?.verify());
+
+    var batch6 = [_]Op{ op10, op14, op18 };
+    tree = try applyTo(tree, &batch6);
+    testing.expect(tree == null);
 }
 
 test "build" {
