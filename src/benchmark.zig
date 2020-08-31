@@ -4,7 +4,7 @@ const time = std.time;
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const heap = std.heap;
-const Hash = @import("hash.zig").HashBlake2s256;
+const Hash = @import("hash.zig").H;
 const o = @import("ops.zig");
 const Op = o.Op;
 const OpTag = o.OpTag;
@@ -52,6 +52,8 @@ fn hashing(timer: *time.Timer, i: usize) !u128 {
     timer.reset();
 
     var buffer: [100]u8 = undefined;
+
+    // _ = std.hash.Wyhash.hash(i, U.intToString(&buffer, @as(u64, (i))));
     _ = Hash.init(U.intToString(&buffer, @as(u64, (i))));
 
     const runtime = timer.read();
@@ -60,6 +62,7 @@ fn hashing(timer: *time.Timer, i: usize) !u128 {
 }
 
 test "benchmark: kv hashing" {
+    @setRuntimeSafety(false);
     var timer = try time.Timer.start();
     var runtime_sum: u128 = 0;
     var i: usize = 0;
@@ -79,7 +82,7 @@ test "benchmark: add and put with no commit" {
     var merk_buf: [8_000_000]u8 = undefined;
     var merk_fixed_buf = heap.FixedBufferAllocator.init(&merk_buf);
 
-    const batch_size: usize = 1_300;
+    const batch_size: usize = 1_000;
     var ops: [batch_size]Op = undefined;
 
     var timer = try time.Timer.start();

@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
-const Hash = @import("hash.zig").HashBlake2s256;
+const Hash = @import("hash.zig").H;
 const util = @import("util.zig");
 const o = @import("ops.zig");
 

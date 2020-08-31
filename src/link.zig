@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 const Tree = @import("tree.zig").Tree;
 const KV = @import("kv.zig").KV;
-const Hash = @import("hash.zig").HashBlake2s256;
+const Hash = @import("hash.zig").H;
 
 pub const LinkTag = enum(u2) {
     Pruned,

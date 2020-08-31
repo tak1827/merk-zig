@@ -3,53 +3,46 @@ const testing = std.testing;
 const crypto = std.crypto;
 const Allocator = std.mem.Allocator;
 
-pub const HashBlake2s256 = Hash(crypto.Blake3);
+pub const H = Hash(std.hash.Wyhash);
 
 pub fn Hash(comptime T: type) type {
     return struct {
         const Self = @This();
-        inner: [T.digest_length]u8,
+        inner: [8]u8,
 
         pub fn init(key: []const u8) Self {
             var ctx: Self = undefined;
-            T.hash(key, &ctx.inner);
+            var result = T.hash(key.len, key);
+            var buf: [8]u8 = undefined;
+            var fbs = std.io.fixedBufferStream(&buf);
+            fbs.writer().writeIntBig(u64, result) catch unreachable;
+            std.mem.copy(u8, &ctx.inner, fbs.getWritten());
             return ctx;
-        }
-
-        pub fn initPtr(allocator: *Allocator, key: []const u8) !*Self {
-            var ctx = try allocator.create(Self);
-            errdefer allocator.destroy(ctx);
-            T.hash(key, &ctx.inner);
-            return ctx;
-        }
-
-        pub fn update(ctx: *Self, key: []const u8) void {
-            T.hash(key, &ctx.inner);
         }
 
         pub fn len() usize {
-            return T.digest_length;
+            return 8;
         }
 
         pub fn zeroHash() Self {
             var ctx: Self = undefined;
-            ctx.inner = [1]u8{0} ** T.digest_length;
+            ctx.inner = [1]u8{0} ** 8;
             return ctx;
         }
     };
 }
 
 test "init & update" {
-    HashBlake2s256.init("key").update("key2");
+    _ = H.init("key");
 }
 
 test "zeroHash" {
-    var h = HashBlake2s256.zeroHash();
-    var expected = [crypto.Blake2s256.digest_length]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    var h = H.zeroHash();
+    var expected = [8]u8{ 0, 0, 0, 0, 0, 0, 0, 0 };
     testing.expectEqualSlices(u8, &h.inner, &expected);
 }
 
 test "len" {
-    const expected: usize = 32;
-    testing.expectEqual(HashBlake2s256.len(), expected);
+    const expected: usize = 8;
+    testing.expectEqual(H.len(), expected);
 }
